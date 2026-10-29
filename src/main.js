@@ -19,6 +19,7 @@ let scores = {};           // scores[sessionId][entrantId] = 18 holes
 let locks = {};            // locks[unitKey] = { dayId, groupId, at, by }
 let people = {};           // the player directory (staff only): people[personId] = { fullName, nick, phone, hcp, role, token, sentAt }
 let devCount = {};         // phones signed in per person (staff only)
+let sides = {};            // side matches a group set up for itself: sides[sessionId:groupId] = { type, method, a, b, players }
 let gate = { state: 'loading' };   // loading | landing | joining | switch | home | people | error | ready
 let sync = { pending: false, cached: false };
 const server = { tour: null, scores: {}, locks: {} };   // last values seen from the database
@@ -31,6 +32,8 @@ const uid = p => p + Math.random().toString(36).slice(2, 8);
 const token = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), b => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('');
 const frac = n => { const w = Math.floor(n), f = n - w; const s = f === 0.5 ? '½' : f === 0.25 ? '¼' : f === 0.75 ? '¾' : ''; return (w || !s ? w : '') + s; };
 const toParTxt = n => (n === 0 ? 'E' : n > 0 ? '+' + n : '−' + Math.abs(n));
+const hhmm = v => { const m = /^(\d{1,2}):(\d{2})/.exec(v || ''); return m ? `${m[1].padStart(2, '0')}:${m[2]}` : ''; };
+const teeTxt = v => { const t = hhmm(v); if (!t) return v || ''; let [h, m] = t.split(':').map(Number); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return `${h}:${String(m).padStart(2, '0')} ${ap}`; };
 const fmtDate = iso => { try { return new Date(iso + 'T00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }); } catch (e) { return iso; } };
 let toastTimer;
 function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 2800); }
@@ -44,6 +47,7 @@ const scoringOf = d => d.scoring || 'stableford';           // 'stableford' | 'b
 const hasStab = d => scoringOf(d) !== 'net';
 const hasNet = d => scoringOf(d) !== 'stableford';
 const viewOnly = d => d.mode === 'view';
+const gradeCut = () => (Number.isFinite(tour?.gradeCut) ? tour.gradeCut : 16);
 const visibleDays = () => (isAdmin() ? tour.days : tour.days.filter(d => !d.hidden));
 const DAY = () => { const v = visibleDays(); return v.find(d => d.id === ui.day) || v[0] || null; };
 const teeOf = day => { const c = tour.courses.find(c => c.id === day.courseId); const t = c && c.tees.find(t => t.id === day.teeId); return c && t ? { name: c.name, tee: t.name, colour: t.colour, holes: t.holes, par: t.holes.reduce((a, h) => a + h.par, 0) } : null; };
@@ -60,10 +64,14 @@ const FORMATS = {
   twoVone: { label: '2 v 1 singles', a: 2, b: 1, match: true },
   ambroseMatch: { label: '2-man Ambrose match', a: 2, b: 2, match: true },
   ambroseStroke: { label: 'Ambrose · stroke', a: 4, b: 0, match: false, min: 2 },
-  individual: { label: 'Individual Stableford', a: 4, b: 0, match: false, min: 1 },
+  individual: { label: 'Individual', a: 4, b: 0, match: false, min: 1 },
 };
-function groupLabel(g) {
+const dayOfGroup = g => tour.days.find(d => d.groups.some(x => x.id === g.id));
+const indivLabel = day => ({ stableford: 'Individual Stableford', both: 'Individual Stableford + stroke', net: 'Individual stroke' })[scoringOf(day || {})];
+const formatLabel = (k, day) => (k === 'individual' ? indivLabel(day) : FORMATS[k].label);
+function groupLabel(g, day = dayOfGroup(g)) {
   const f = FORMATS[g.format];
+  if (g.format === 'individual') return indivLabel(day);
   const meth = f.match && g.format !== 'ambroseMatch' ? ` · ${g.method === 'back' ? 'back' : 'front'} of card` : '';
   const val = f.match && g.value !== 1 ? ` · ${frac(g.value)} pt each` : '';
   if (g.format === 'ambroseStroke') return `${g.slots.a.filter(Boolean).length}-man Ambrose · stroke`;
@@ -82,12 +90,30 @@ function ambTeams(g) {
   }
   return [];
 }
-function unitsOf(day, g) {
+/** A group's matches. withSide adds the side match a playing group set up for itself (not part of any Cup). */
+function unitsOf(day, g, withSide = false) {
+  const base = unitsOfGroup(day, g);
+  if (!withSide || g.format !== 'individual' || !base.length) return base;
+  return [...base, ...sideUnits(day, g, base[0].key)];
+}
+function sideUnits(day, g, key) {
+  const sm = sides[day.id + ':' + g.id]; if (!sm) return [];
+  const inGroup = id => groupPlayers(g).includes(id) && PIDX[id];
+  if (sm.type === 'cutthroat') { const ps = (sm.players || []).filter(inGroup); return ps.length >= 2 ? [{ key, g, day, kind: 'cutthroat', ents: ps, label: 'Cut throat', side: true }] : []; }
+  const a = (sm.a || []).filter(inGroup), b = (sm.b || []).filter(inGroup);
+  const gm = { ...g, method: sm.method || 'front' };
+  const pairs = sm.type === 'fourball' ? [[a, b]] : a.map((x, i) => [[x], [b[i]].filter(Boolean)]);
+  return pairs.filter(p => p[0].length && p[1].length).map(sd => ({ key, g: gm, day, kind: 'match', side: true, sides: sd, teams: ['t1', 't2'], value: 1, ents: [...sd[0], ...sd[1]],
+    label: 'Side: ' + sd.map(x => x.map(id => PIDX[id].name).join(' & ')).join(' v '), teamsOn: false }));
+}
+const sideLabel = sm => (sm.type === 'cutthroat' ? 'Cut throat' : sm.type === 'fourball' ? `4-ball · ${sm.method === 'back' ? 'back' : 'front'} of card` : `Singles · ${sm.method === 'back' ? 'back' : 'front'} of card`);
+function cutThroatOf(u) { return E.cutThroat(teeOf(u.day), u.ents.map(id => ({ name: PIDX[id].name, handicap: PIDX[id].hcp, scores: scFor(u.day.id, id) }))); }
+function unitsOfGroup(day, g) {
   const key = i => `${day.id}:${g.id}:${i}`;
   const teamsOn = isTour() && day.teamsOn !== false;
   if (g.format === 'ambroseMatch') {
     const [a, b] = ambTeams(g); if (!a.players.length || !b.players.length) return [];
-    return [{ key: key(0), g, day, kind: 'ambroseMatch', sides: [[a.id], [b.id]], teams: teamsOn ? sideTeams(a.players, b.players) : ['n1', 'n2'], label: `${a.name} v ${b.name}`, value: g.value, ents: [a.id, b.id], teamsOn }];
+    return [{ key: key(0), g, day, kind: 'ambroseMatch', sides: [[a.id], [b.id]], teams: teamsOn ? sideTeams(a.players, b.players) : ['t1', 't2'], label: `${a.name} v ${b.name}`, value: g.value, ents: [a.id, b.id], teamsOn }];
   }
   if (g.format === 'ambroseStroke') { const [t] = ambTeams(g); return t.players.length ? [{ key: key(0), g, day, kind: 'ambroseStroke', ents: [t.id], label: t.name }] : []; }
   if (g.format === 'individual') return [{ key: key(0), g, day, kind: 'individual', ents: g.slots.a.filter(Boolean), label: 'All players' }];
@@ -98,7 +124,7 @@ function unitsOf(day, g) {
   return pairs.filter(p => p[0].length && p[1].length).map((sides, i) => {
     let teams = sideTeams(sides[0], sides[1]);
     if (teamsOn && teams[0] === 't2') { sides = [sides[1], sides[0]]; teams = ['t1', 't2']; }   // team 1 on the left
-    return { key: key(i), g, day, kind: 'match', sides, teams: teamsOn ? teams : ['n1', 'n2'], value: g.value, ents: [...sides[0], ...sides[1]],
+    return { key: key(i), g, day, kind: 'match', sides, teams: teamsOn ? teams : ['t1', 't2'], value: g.value, ents: [...sides[0], ...sides[1]],
       label: sides.map(s => s.map(id => PIDX[id].name).join(' & ')).join(' v '), teamsOn };
   });
 }
@@ -176,6 +202,10 @@ function matchState(u, m, big = false) {
   return { chip: chev(st, u.teams, { big, text: st === 0 ? 'AS' : null }), sub: m.dormie ? `Dormie · ${m.toPlay} to play` : `${m.toPlay} to play` };
 }
 const entNames = ids => ids.map(id => esc(entName(id))).join(' & ');
+function cutLine(u, ct) {
+  if (!ct.holesPlayed) return `<div class="mline"><div class="a" style="grid-column:1/-1"><span class="chev ns">Not started</span></div></div>`;
+  return `<div class="ctline">${ct.standings.map(s => `<span class="${s.rank === 1 && s.wins ? 'lead' : ''}">${esc(PIDX[u.ents[s.player]].name)} <b>${s.wins}</b></span>`).join('')}<span class="muted small">${ct.finished ? 'holes won · finished' : `holes won · thru ${ct.holesPlayed}`}</span></div>`;
+}
 function mlineHTML(u, m, opts = {}) {
   const st = matchState(u, m, opts.big);
   const pts = side => (m && m.finished ? `<b>${frac(m.points[side])}</b>` : '');
@@ -227,14 +257,15 @@ function viewDay() {
     <select id="as"><option value="admin" ${isAdmin() ? 'selected' : ''}>Administrator</option>${tour.players.map(p => `<option value="${p.id}" ${ui.as === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div></div></section>`;
   if (!course) return viewing + daySwitch() + `<section class="card"><div class="pad">${esc(day.title)} has no course yet. ${isAdmin() ? 'Choose one in Setup > Sessions & groups.' : ''}</div></section>`;
   const order = day.groups.map((g, gi) => {
-    const units = unitsOf(day, g); const visible = canSeeGroup(g);
+    const units = unitsOf(day, g); const visible = canSeeGroup(g); const side = unitsOf(day, g, true).filter(u => u.side);
     const ents = units.flatMap(u => u.ents);
     const thru = ents.length ? Math.min(...ents.map(thruOf)) : 0;
     const status = thru === 18 ? 'Finished' : thru === 0 ? 'Not started' : `Thru ${thru}`;
     let lines;
     if (FORMATS[g.format].match) lines = units.map(u => mlineHTML(u, visible ? matchOf(u) : null)).join('');
-    else lines = `<div class="mline"><div class="a" style="grid-column:1/-1">${groupPlayers(g).map(id => `<span class="dot ${PIDX[id]?.team || ''}"></span>${esc(PIDX[id]?.name)}`).join('&ensp;')}</div></div>`;
-    return `<li><button class="gbtn" data-go="${g.id}"><span class="teet">${esc(g.tee || '')}<small>Group ${gi + 1}</small></span>
+    else lines = `<div class="mline"><div class="a" style="grid-column:1/-1">${groupPlayers(g).map(id => `<span class="dot ${isTour() ? PIDX[id]?.team || '' : ''}"></span>${esc(PIDX[id]?.name)}`).join('&ensp;')}</div></div>`;
+    if (side.length && visible) lines += `<div class="sidelbl2">Side match · ${esc(sideLabel(sides[day.id + ':' + g.id]))}</div>` + side.map(u => (u.kind === 'cutthroat' ? cutLine(u, cutThroatOf(u)) : mlineHTML(u, matchOf(u)))).join('');
+    return `<li><button class="gbtn" data-go="${g.id}"><span class="teet">${esc(teeTxt(g.tee))}<small>Group ${gi + 1}</small></span>
       <span><span class="lbl"><span>${esc(groupLabel(g))}</span><span>${visible ? status : ''}</span></span>${lines}</span></button></li>`;
   }).join('');
   return `${viewing}${daySwitch()}
@@ -252,11 +283,11 @@ function viewScores() {
   if (!groups.length) return daySwitch() + `<section class="card"><div class="pad">${day.groups.length ? 'You are not in a group on this day.' : 'No groups posted yet.'}</div></section>`;
   if (!groups.find(g => g.id === ui.group)) ui.group = (myGroup() || groups[0]).id;
   const g = day.groups.find(x => x.id === ui.group); const gn = day.groups.indexOf(g) + 1;
-  const units = unitsOf(day, g);
+  const units = unitsOf(day, g, true);
   if (!units.length) return daySwitch() + `<section class="card"><div class="pad">Group ${gn} has no players yet.</div></section>`;
   const uk = day.id + ':' + g.id;
   if (ui.unit[uk] === undefined || !units[ui.unit[uk]]) { const mine = units.findIndex(u => myUnits().some(x => x.key === u.key)); ui.unit[uk] = Math.max(0, mine); }
-  const u = units[ui.unit[uk]]; const m = matchOf(u); const isMatch = !!m;
+  const u = units[ui.unit[uk]]; const m = matchOf(u); const isMatch = !!m; const ct = u.kind === 'cutthroat' ? cutThroatOf(u) : null;
   const views = [['gross', 'Gross'], ...(u.kind === 'ambroseStroke' ? [] : [['stab', u.kind === 'ambroseMatch' ? 'Points' : 'Stableford']]), ...(u.kind === 'match' ? [['match', 'Match']] : [])];
   if (!views.find(v => v[0] === ui.view)) ui.view = 'gross';
   const chips = groups.length > 1 ? `<div class="chips" role="toolbar" aria-label="Groups">${groups.map(x => `<button aria-pressed="${x.id === g.id}" data-group="${x.id}">Group ${day.groups.indexOf(x) + 1}</button>`).join('')}</div>` : '';
@@ -278,6 +309,7 @@ function viewScores() {
     let win = '';
     if (isMatch) { const mh = m.holes[i]; const side = sideOf(id); const p = mh.points[side][kOf(id)];
       if (mh.winner === side && p !== null && p === mh.best[side] && !(m.decidedOn && h.number > m.decidedOn)) win = 'win-' + u.teams[side]; }
+    if (ct && ct.holes[i].winner === u.ents.indexOf(id)) win = 'win-ct';
     return `<td class="c ${win}">${withShots(inner, shotsAt(id, i))}</td>`;
   };
   const mid = i => {
@@ -301,7 +333,7 @@ function viewScores() {
   const rows = [];
   for (let i = 0; i < 18; i++) {
     const h = course.holes[i];
-    const idx = (u.kind === 'match' && g.method === 'back' && ui.view === 'match') ? `M${h.matchIndexes[0]}` : h.strokeIndexes[0];
+    const idx = (u.kind === 'match' && u.g.method === 'back' && ui.view === 'match') ? `M${h.matchIndexes[0]}` : h.strokeIndexes[0];
     rows.push(`<tr class="hrow ${ro ? 'ro' : ''}" data-hole="${i}" tabindex="0" aria-label="Hole ${h.number}${ro ? '' : ': enter scores'}"><td class="h"><b>${h.number}</b><span>P${h.par} · ${idx}</span></td>${left.map(id => cell(id, i)).join('')}${isMatch ? mid(i) : ''}${right.map(id => cell(id, i)).join('')}</tr>`);
     if (i === 8) rows.push(totRow('OUT', 0, 9));
   }
@@ -310,7 +342,10 @@ function viewScores() {
   const gaps = isMatch ? u.ents.map(id => { const miss = []; for (let i = 0; i < 18; i++) if (sc(id)[i] === null && u.ents.some(o => sc(o)[i] !== null)) miss.push(i + 1); return { id, miss }; }).filter(x => x.miss.length) : [];
   const runs = a => a.reduce((r, n) => { const l = r[r.length - 1]; if (l && n === l[1] + 1) l[1] = n; else r.push([n, n]); return r; }, []).map(([x, y]) => (x === y ? x : `${x}–${y}`)).join(', ');
   const gapNote = gaps.length ? `<div class="pad small gapnote">Match status shows once every player in the match has a score for the hole. Waiting for: ${gaps.map(x => `<b>${esc(entName(x.id))}</b> (hole${x.miss.length > 1 ? 's' : ''} ${runs(x.miss)})`).join('; ')}.</div>` : '';
-  let summary = isMatch ? `<section class="card"><h2>Match</h2><div class="pad" style="padding-top:0">${mlineHTML(u, m, { big: true })}</div>${gapNote}${submitHTML(u)}</section>` : `<section class="card"><h2>Sign and submit</h2>${submitHTML(u)}</section>`;
+  const smEditor = g.format === 'individual' ? sideMatchCard(day, g, units[0]) : '';
+  const ctCard = ct ? `<section class="card"><h2>Cut throat</h2><table class="lb"><thead><tr><th>Pos</th><th>Player</th><th class="num">Holes won</th></tr></thead><tbody>${ct.standings.map(s => `<tr><td class="pos">${s.tied ? 'T' : ''}${s.rank}</td><td>${esc(PIDX[u.ents[s.player]].name)}</td><td class="num">${s.wins}</td></tr>`).join('')}</tbody></table>
+    <div class="pad small muted">Best Stableford score on a hole wins it outright; a shared best score halves the hole, with no carry-over. ${ct.holesPlayed ? `${ct.halved} of ${ct.holesPlayed} holes halved so far.` : 'Not started.'} Winning scores are shaded on the card.</div></section>` : '';
+  let summary = ctCard + (isMatch ? `<section class="card"><h2>${u.side ? 'Side match' : 'Match'}</h2><div class="pad" style="padding-top:0">${mlineHTML(u, m, { big: true })}</div>${gapNote}${u.side ? '<div class="pad small muted" style="padding-top:0">A side match is just for your group: it does not count towards any Cup.</div>' : submitHTML(u)}</section>` : `<section class="card"><h2>Sign and submit</h2>${submitHTML(u.side ? units[0] : u)}</section>`);
   if (u.kind.startsWith('ambrose')) {
     summary += `<section class="card"><h2>Ambrose</h2><table class="lb"><thead><tr><th>Team</th><th class="thru">Thru</th><th class="num">HC</th><th class="num">Gross</th><th class="num">Net</th></tr></thead><tbody>${u.ents.map(id => {
       const a = ambTeam(id); const c = E.ambroseCard(course, { name: a.name, handicaps: a.players.map(p => PIDX[p].hcp), scores: sc(id) }); const t = thruOf(id);
@@ -318,21 +353,51 @@ function viewScores() {
     }).join('')}</tbody></table>${u.kind === 'ambroseMatch' ? `<div class="pad small muted">Team handicaps ${m.teamHandicaps.map(v => +v.toFixed(2)).join(' v ')}: ${Math.max(...m.strokesReceived)} shots to ${esc(m.strokesReceived[0] ? entName(u.sides[0][0]) : entName(u.sides[1][0]))} on the stroke index.</div>` : ''}</section>`;
   } else {
     const S = hasStab(day), N = hasNet(day);
-    summary += `<section class="card"><h2>Group ${gn} scores</h2><table class="lb"><thead><tr><th>Player</th><th class="thru">Thru</th>${S ? '<th class="num">Pts</th><th class="num">Gross Stab</th>' : ''}${N ? '<th class="num">Net</th>' : ''}</tr></thead><tbody>${groupPlayers(g).map(id => {
+    if (u.side && isMatch) summary += `<section class="card"><h2>Sign and submit</h2>${submitHTML(units[0])}</section>`;
+    summary += `<section class="card"><h2>Group ${gn} scores</h2><table class="lb"><thead><tr><th>Player</th><th class="thru">Thru</th>${S ? '<th class="num">Pts</th><th class="num">Gross Stab</th>' : ''}${N ? '<th class="num">Stroke</th>' : ''}</tr></thead><tbody>${groupPlayers(g).map(id => {
       const c = cardOf(id); const t = c.holesEntered; const pu = sc(id).some(v => v === 'P');
       const played = c.holes.filter(l => typeof l.score === 'number');
       const ntp = played.reduce((a, l) => a + l.score - l.par - l.strokes, 0); const gross = played.reduce((a, l) => a + l.score, 0);
       const net = pu ? 'DQ' : t === 18 ? `${gross - c.handicap}` : t ? toParTxt(ntp) : '–';
-      return `<tr><td><span class="dot ${PIDX[id].team || ''}"></span>${esc(PIDX[id].name)}</td><td class="thru ${t === 18 ? 'f' : ''}">${t === 18 ? 'F' : t}</td>${S ? `<td class="num">${c.points}</td><td class="num">${c.grossStableford ?? '–'}</td>` : ''}${N ? `<td class="num">${net}</td>` : ''}</tr>`;
+      return `<tr><td><span class="dot ${isTour() ? PIDX[id].team || '' : ''}"></span>${esc(PIDX[id].name)}</td><td class="thru ${t === 18 ? 'f' : ''}">${t === 18 ? 'F' : t}</td>${S ? `<td class="num">${c.points}</td><td class="num">${c.grossStableford ?? '–'}</td>` : ''}${N ? `<td class="num">${net}</td>` : ''}</tr>`;
     }).join('')}</tbody></table></section>`;
   }
+  summary += smEditor;
   return `${daySwitch()}<section class="card"><div class="pad coursebar"><span><b>${esc(course.name)}</b></span><span class="tee"><i></i>${esc(course.tee)} tees · Par ${course.par}</span></div></section>
   ${chips}
   <section class="card">
-    <div class="ghead"><div class="t"><div><div class="eyebrow">Group ${gn} · ${esc(g.tee || '')}</div><h2>${esc(groupLabel(g))}</h2></div>${locks[u.key] ? '<span class="small" style="color:var(--ok);font-weight:600">Submitted</span>' : ''}</div>${unitSeg}${viewSeg}</div>
+    <div class="ghead"><div class="t"><div><div class="eyebrow">Group ${gn} · ${esc(teeTxt(g.tee))}</div><h2>${esc(groupLabel(g))}</h2></div>${locks[u.key] ? '<span class="small" style="color:var(--ok);font-weight:600">Submitted</span>' : ''}</div>${unitSeg}${viewSeg}</div>
     <table class="sc">${colgroup}<thead><tr><th style="text-align:left;padding-left:8px">Hole</th>${left.map(head).join('')}${isMatch ? '<th>Match</th>' : ''}${right.map(head).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>
-    <div class="legend"><span><span class="mk eagle">3</span>Eagle or better</span><span><span class="mk birdie">3</span>Birdie</span><span><span class="mk bogey">5</span>Bogey</span><span><span class="mk dbl">6</span>Double bogey +</span>${isMatch ? `<span><span class="sw" style="background:var(--${u.teams[0]}-soft)"></span><span class="sw" style="background:var(--${u.teams[1]}-soft)"></span>Winning score on the hole</span>` : ''}<span>${ro ? (locks[u.key] ? 'Scores locked' : 'View only') : 'Tap a hole to enter scores'}</span></div>
+    <div class="legend"><span><span class="mk eagle">3</span>Eagle or better</span><span><span class="mk birdie">3</span>Birdie</span><span><span class="mk bogey">5</span>Bogey</span><span><span class="mk dbl">6</span>Double bogey +</span>${isMatch ? `<span><span class="sw" style="background:var(--${u.teams[0]}-soft)"></span><span class="sw" style="background:var(--${u.teams[1]}-soft)"></span>Winning score on the hole</span>` : ''}${ct ? '<span><span class="sw" style="background:var(--as-soft)"></span>Won the hole outright</span>' : ''}<span>${ro ? (locks[u.key] ? 'Scores locked' : 'View only') : 'Tap a hole to enter scores'}</span></div>
   </section>${summary}`;
+}
+/* Side match: a group playing individual scoring can set up its own match. Group members and administrators can change it. */
+function sideMatchCard(day, g, baseUnit) {
+  const key = day.id + ':' + g.id; const sm = sides[key]; const can = canEdit(baseUnit);
+  const ps = groupPlayers(g).filter(id => PIDX[id]);
+  if (ps.length < 2) return '';
+  const ed = ui.sideEdit && ui.sideEdit.key === key ? ui.sideEdit : null;
+  if (!ed) {
+    if (!can) return sm ? '' : '';
+    return `<section class="card"><h2>Side match</h2><div class="pad" style="padding-top:0;display:grid;gap:8px">${sm ? `<span>${esc(sideLabel(sm))}. Choose it above the scorecard to follow it hole by hole.</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-sideedit>Change</button><button class="btn" data-sidedel>Remove side match</button></div>`
+      : `<span class="small muted">Playing a match within your group? Set it up here. It is just for your group and does not count towards any Cup.</span><div><button class="btn primary" data-sideedit>Set up a side match</button></div>`}</div></section>`;
+  }
+  const types = [['fourball', '4-ball', ps.length === 4], ['singles', 'Singles', ps.length % 2 === 0], ['cutthroat', 'Cut throat', ps.length >= 3]].filter(x => x[2]);
+  if (!types.find(x => x[0] === ed.type)) ed.type = types[0]?.[0];
+  const sideOf = id => (ed.a.includes(id) ? 'a' : ed.b.includes(id) ? 'b' : '');
+  const pick = ed.type !== 'cutthroat' ? `<div class="frow"><span class="lab">${ed.type === 'singles' ? 'Sides (first on the left plays first on the right, and so on)' : 'Sides'}</span>
+      ${ps.map(id => `<div class="smrow"><span>${esc(PIDX[id].name)} <span class="muted small">HC ${PIDX[id].hcp}</span></span><div class="seg" role="group" aria-label="Side for ${esc(PIDX[id].name)}">
+        <button aria-pressed="${sideOf(id) === 'a'}" data-smside="a" data-pid="${id}" class="sm-a">Left</button><button aria-pressed="${sideOf(id) === 'b'}" data-smside="b" data-pid="${id}" class="sm-b">Right</button></div></div>`).join('')}</div>
+      <div class="frow"><span class="lab">Handicaps</span><div class="seg" role="group">${[['front', 'Front of card'], ['back', 'Back of card']].map(([k, l]) => `<button aria-pressed="${ed.method === k}" data-smmethod="${k}">${l}</button>`).join('')}</div>
+        <span class="small muted">${ed.method === 'back' ? 'Shots are the difference from the lowest handicap, on the match play index.' : 'Each player plays off their full handicap on the stroke index.'}</span></div>`
+    : `<span class="small muted">Everyone plays for themselves. The best Stableford score on a hole wins it outright; if two or more share the best score the hole is halved, with no carry-over. Most holes won wins.</span>`;
+  const ready = ed.type === 'cutthroat' || (ed.type === 'fourball' ? ed.a.length === 2 && ed.b.length === 2 : ed.a.length && ed.a.length === ed.b.length && ed.a.length + ed.b.length === ps.length);
+  return `<section class="card"><h2>Side match</h2><div class="form">
+    <div class="frow"><span class="lab">Game</span><div class="seg" role="group" aria-label="Side match game">${types.map(([k, l]) => `<button aria-pressed="${ed.type === k}" data-smtype="${k}">${l}</button>`).join('')}</div></div>
+    ${pick}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-smsave ${ready ? '' : 'disabled'}>Save side match</button><button class="btn" data-smcancel>Cancel</button></div>
+    ${!ready ? `<span class="small muted">${ed.type === 'fourball' ? 'Put two players on each side.' : 'Put the same number of players on each side.'}</span>` : ''}</div></section>`;
 }
 function submitHTML(u) {
   if (locks[u.key]) return `<div class="submit"><span class="ok">Scores submitted and locked.</span><span class="small muted">If something is wrong, ask an administrator to change it.</span>${isAdmin() ? `<div><button class="btn" data-unlock="${u.key}">Unlock for changes</button></div>` : ''}</div>`;
@@ -354,7 +419,7 @@ function viewLeaders() {
   const indiv = d => d.groups.some(g => !g.format.startsWith('ambrose') && groupPlayers(g).length);
   const tabs = scope === 'tour'
     ? [...(anyStab ? [['stab', 'Stableford'], ['gross', 'Gross Stab']] : []), ['nov', 'Novelty']]
-    : [...(hasStab(day) && indiv(day) ? [['stab', 'Stableford'], ['gross', 'Gross Stab']] : []), ...(hasNet(day) && indiv(day) ? [['net', 'Net']] : []),
+    : [...(hasStab(day) && indiv(day) ? [['stab', 'Stableford'], ['gross', 'Gross Stab']] : []), ...(hasNet(day) && indiv(day) ? [['net', 'Stroke']] : []),
        ...(day.groups.some(g => g.format.startsWith('ambrose')) ? [['amb', 'Ambrose']] : []), ...(indiv(day) ? [['nov', 'Novelty']] : [])];
   if (!tabs.length) return daySwitch() + `<section class="card"><div class="pad">No leaderboards for this session yet.</div></section>`;
   if (!tabs.find(t => t[0] === ui.lb)) ui.lb = tabs[0][0];
@@ -403,7 +468,7 @@ function viewLeaders() {
       const lb = E.liveNetLeaderboard(entries);
       head = '<th>Pos</th><th>Player</th><th class="thru">Thru</th><th class="num">Net</th><th></th>';
       body = lb.map(r => expandable(r.player, 4, `<td class="pos">${r.dq ? 'DQ' : E.rankLabel(r)}</td><td>${nm(r.player)}${r.dq ? '<span class="note">Picked up</span>' : cbNote(r)}</td>${thruTd(r.thru)}<td class="num">${r.dq ? 'DQ' : r.complete ? `${r.net}<span class="sub">${toParTxt(r.netToPar)}</span>` : toParTxt(r.netToPar)}</td>`, () => miniPlayer(r.player))).join('');
-      note = `Relative to par while playing; total net once finished (par ${course.par}). Any pickup is DQ.`;
+      note = `Net stroke play: relative to par while playing; total net score once finished (par ${course.par}). Any pickup is DQ.`;
     } else {
       const teams = day.groups.flatMap(ambTeams).map(a => ({ a, c: E.ambroseCard(course, { name: a.name, handicaps: a.players.map(id => PIDX[id].hcp), scores: sc(a.id) }) })).filter(t => t.c.complete);
       const lb = E.aggregateLeaderboard(teams.map(t => ({ player: t.a.id, rounds: [t.c.dq ? null : t.c.net] })), 'lower');
@@ -422,7 +487,7 @@ function viewLeaders() {
 
 function noveltyView(days) {
   const rounds = days.flatMap(d => { const crs = teeOf(d); if (!crs) return [];
-    return d.groups.filter(g => !g.format.startsWith('ambrose')).flatMap(groupPlayers).map(id => ({ player: id, session: d.id, pars: crs.holes.map(h => h.par), scores: scFor(d.id, id) })); });
+    return d.groups.filter(g => !g.format.startsWith('ambrose')).flatMap(groupPlayers).filter(id => PIDX[id] && (ui.grade === 'A' ? PIDX[id].hcp <= gradeCut() : ui.grade === 'B' ? PIDX[id].hcp > gradeCut() : true)).map(id => ({ player: id, session: d.id, pars: crs.holes.map(h => h.par), scores: scFor(d.id, id) })); });
   const st = E.noveltyStats(rounds, 3);
   const multi = days.length > 1;
   const sessName = id => esc(dayById(id)?.title || '');
@@ -430,9 +495,10 @@ function noveltyView(days) {
   const block = (title, desc, rows, val, extra) => `<div class="nov"><div class="nov-h"><b>${title}</b><span class="small muted">${desc}</span></div>
     ${rows.length ? `<table class="lb"><tbody>${rows.map(r => `<tr><td class="pos">${r.tied ? 'T' : ''}${r.rank}</td><td>${nm(r.item.player)}${extra ? `<span class="note">${extra(r.item)}</span>` : ''}</td><td class="num">${val(r.item)}</td></tr>`).join('')}</tbody></table>` : '<div class="pad small muted">Nothing yet.</div>'}</div>`;
   const range = x => `Holes ${x.from}–${x.to}${multi ? ` · ${sessName(x.session)}` : ''}`;
+  const gradeSeg = `<div class="pad" style="padding-block:4px 0"><div class="seg" role="group" aria-label="Grade">${[['all', 'All'], ['A', `A grade (≤${gradeCut()})`], ['B', `B grade (${gradeCut() + 1}+)`]].map(([k, l]) => `<button aria-pressed="${(ui.grade || 'all') === k}" data-grade="${k}">${l}</button>`).join('')}</div></div>`;
   return {
-    note: multi ? 'Top 3 across the whole event so far. Trains are counted within a single round.' : 'Top 3 in this session so far.',
-    body: `<div class="novs">
+    note: (multi ? 'Top 3 across the whole event so far. Trains are counted within a single round.' : 'Top 3 in this session so far.') + (ui.grade && ui.grade !== 'all' ? ` ${ui.grade} grade only, by event handicap.` : ''),
+    body: gradeSeg + `<div class="novs">
       ${block('Bogey train', 'Longest run of bogey or worse (pickups count)', st.bogeyTrain, x => x.length, range)}
       ${block('Par train', 'Longest run of par or better', st.parTrain, x => x.length, range)}
       ${block('Birdies', 'Birdie or better', st.birdies, x => x.count)}
@@ -498,13 +564,15 @@ function setupTour() {
       <select id="as"><option value="admin" selected>Choose a player…</option>${[...tour.players].sort(teamFirst).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
     <div class="frow"><label for="t-title">Event name</label><input type="text" id="t-title" data-tf="title" value="${esc(tour.title)}"></div>
     <div class="frow"><span class="lab">Status</span>
-      ${canStatus ? `<div class="seg" role="group" aria-label="Event status">${STATUS.map(([k, l]) => `<button aria-pressed="${(tour.status || 'planning') === k}" data-status="${k}">${l}</button>`).join('')}</div>` : `<div><span class="stchip st-${tour.status}">${statusName(tour.status)}</span></div>`}
-      <span class="small muted">${STATUS_NOTE[tour.status || 'planning']}</span></div>
+      ${canStatus ? `<div class="radios" role="radiogroup" aria-label="Event status">${STATUS.map(([k, l]) => `<label class="radio"><input type="radio" name="evstatus" value="${k}" ${(tour.status || 'planning') === k ? 'checked' : ''}><span><b>${l}</b><span class="small muted">${STATUS_NOTE[k]}</span></span></label>`).join('')}</div>`
+        : `<div><span class="stchip st-${tour.status}">${statusName(tour.status)}</span></div><span class="small muted">${STATUS_NOTE[tour.status || 'planning']}</span>`}</div>
     <div class="frow"><span class="lab">Event administrators</span>${adminBox}</div>
     <label class="switch tourmode"><input type="checkbox" id="istour" ${isTour() ? 'checked' : ''}> <span>This event is a Tour<span class="small muted" style="display:block;font-weight:500">Two teams play matches for a Cup. Turn on to show team settings, team colours and the Cup page.</span></span></label>
     ${!isTour() ? '' : ['t1', 't2'].map((t, i) => `<div class="frow"><label for="tn-${t}">Team ${i + 1}</label><input type="text" id="tn-${t}" value="${esc(tour.teams[t].name)}" data-teamname="${t}">
       <div class="swatches" role="group" aria-label="Team ${i + 1} colour">${SWATCHES.map(([n, c]) => `<button style="background:${c}" aria-label="${n}" title="${n}" aria-pressed="${tour.teams[t].color === c}" data-swatch="${t}" data-c="${c}"></button>`).join('')}</div></div>`).join('')}
     ${!isTour() ? '' : `<div class="frow"><label for="t-ptw">Points to win the Cup</label><input type="text" inputmode="decimal" id="t-ptw" data-tf="pointsToWin" value="${tour.pointsToWin}" style="max-width:120px"></div>`}
+    <div class="frow"><label for="t-grade">A grade: handicap up to</label><input type="text" inputmode="numeric" id="t-grade" data-tf="gradeCut" value="${gradeCut()}" style="max-width:90px">
+      <span class="small muted">A grade is handicap ${gradeCut()} or less; B grade is ${gradeCut() + 1} or more. Used to filter the Novelty stats.</span></div>
     <div class="frow"><span class="lab">Live leaderboards for players</span>
       <div class="seg" role="group">${[['live', 'Live'], ['hidden', 'Hidden'], ['until', 'Live until']].map(([k, l]) => `<button aria-pressed="${tour.visibility === k}" data-vis="${k}">${l}</button>`).join('')}</div>
       ${tour.visibility === 'until' ? `<input type="time" id="until" value="${tour.until}" aria-label="Hide leaderboards at" style="max-width:140px">` : ''}
@@ -650,7 +718,7 @@ function setupDays() {
       <label class="switch tourmode"><input type="checkbox" data-df="shown" data-did="${d.id}" ${!d.hidden ? 'checked' : ''}> <span>Show this session to players<span class="small muted" style="display:block;font-weight:500">${d.hidden ? 'Hidden: players cannot see this session yet, so you can set it up in advance.' : 'Players can see the order of play, briefing and scores for this session.'}</span></span></label>
       <div class="frow"><span class="lab">Players can</span><div class="seg" role="group" aria-label="Scoring access">${[['edit', 'View and edit'], ['view', 'View only']].map(([k, l]) => `<button aria-pressed="${(d.mode || 'edit') === k}" data-mode="${k}" data-did="${d.id}">${l}</button>`).join('')}</div>
         <span class="small muted">${viewOnly(d) ? 'Results are final: players can see but not change scores. Administrators can still edit.' : 'Players enter scores for their own match.'}</span></div>
-      <div class="frow"><span class="lab">Individual scoring</span><div class="seg" role="group" aria-label="Individual scoring">${[['stableford', 'Stableford'], ['both', 'Stableford + Net'], ['net', 'Net only']].map(([k, l]) => `<button aria-pressed="${scoringOf(d) === k}" data-scoring="${k}" data-did="${d.id}">${l}</button>`).join('')}</div></div>
+      <div class="frow"><span class="lab">Individual scoring</span><div class="seg" role="group" aria-label="Individual scoring">${[['stableford', 'Stableford'], ['both', 'Stableford + Stroke'], ['net', 'Stroke only']].map(([k, l]) => `<button aria-pressed="${scoringOf(d) === k}" data-scoring="${k}" data-did="${d.id}">${l}</button>`).join('')}</div></div>
       ${!isTour() ? '' : `<label class="switch tourmode"><input type="checkbox" data-df="teamsOn" data-did="${d.id}" ${d.teamsOn !== false ? 'checked' : ''}> <span>Tour mode: <b style="color:var(--t1-text)">${esc(tName('t1'))}</b> v <b style="color:var(--t2-text)">${esc(tName('t2'))}</b><span class="small muted" style="display:block;font-weight:500">Matches are ${esc(tName('t1'))} v ${esc(tName('t2'))} and count towards the Cup. Turn off for a session of mixed groups.</span></span></label>`}
       <div class="frow"><label>Briefing</label><textarea rows="3" data-df="briefing" data-did="${d.id}" placeholder="Meeting time, format, nearest the pins…">${esc(d.briefing || '')}</textarea></div>
       <div class="frow"><span class="lab">Groups</span>${check}</div>
@@ -695,8 +763,11 @@ function groupEditor(d, g, i) {
   const sw = ui.swap && ui.swap.gid === g.id && ui.swap.did === d.id ? ui.swap : null;
   const swapBox = sw ? `<div class="confirm"><span><b>${esc(PIDX[sw.old]?.name)}</b> has ${sw.held} hole${sw.held > 1 ? 's' : ''} entered for this session. ${sw.nv ? `Replace him with <b>${esc(PIDX[sw.nv]?.name)}</b>` : 'Take him out of the group'} anyway? His scores stay saved and come back if you put him back.</span>
     <div style="display:flex;gap:8px"><button class="btn danger" data-swapyes>${sw.nv ? 'Replace' : 'Take out'}</button><button class="btn" data-swapno>Keep ${esc(PIDX[sw.old]?.name)}</button></div></div>` : '';
-  return `<div class="gedit"><div class="ghd"><b>Group ${i + 1}</b><input type="text" value="${esc(g.tee || '')}" data-gf="tee" data-did="${d.id}" data-gid="${g.id}" aria-label="Tee time" placeholder="Tee time" style="width:80px"><button class="btn sm" data-delgroup="${g.id}" data-did="${d.id}" aria-label="Remove group ${i + 1}">Remove</button></div>
-    <div class="two"><select data-gf="format" data-did="${d.id}" data-gid="${g.id}" aria-label="Format">${Object.entries(FORMATS).map(([k, v]) => `<option value="${k}" ${k === g.format ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
+  const n = d.groups.length;
+  return `<div class="gedit"><div class="ghd"><b>Group ${i + 1}</b><input type="time" value="${hhmm(g.tee)}" data-gf="tee" data-did="${d.id}" data-gid="${g.id}" aria-label="Tee time for group ${i + 1}" step="60">
+    <span class="mv"><button class="btn sm" data-gmove="-1" data-gid="${g.id}" data-did="${d.id}" aria-label="Move group ${i + 1} earlier" ${i === 0 ? 'disabled' : ''}>↑</button><button class="btn sm" data-gmove="1" data-gid="${g.id}" data-did="${d.id}" aria-label="Move group ${i + 1} later" ${i === n - 1 ? 'disabled' : ''}>↓</button></span>
+    <button class="btn sm" data-delgroup="${g.id}" data-did="${d.id}" aria-label="Remove group ${i + 1}">Remove</button></div>
+    <div class="two"><select data-gf="format" data-did="${d.id}" data-gid="${g.id}" aria-label="Format">${Object.keys(FORMATS).map(k => `<option value="${k}" ${k === g.format ? 'selected' : ''}>${esc(formatLabel(k, d))}</option>`).join('')}</select>
     ${f.match ? `<div style="display:flex;gap:6px">${g.format !== 'ambroseMatch' ? `<select data-gf="method" data-did="${d.id}" data-gid="${g.id}" aria-label="Handicap method"><option value="front" ${g.method !== 'back' ? 'selected' : ''}>Front of card</option><option value="back" ${g.method === 'back' ? 'selected' : ''}>Back of card</option></select>` : ''}
       <select data-gf="value" data-did="${d.id}" data-gid="${g.id}" aria-label="Points per match"><option value="1" ${g.value === 1 ? 'selected' : ''}>1 pt</option><option value="0.5" ${g.value === 0.5 ? 'selected' : ''}>½ pt</option></select></div>` : '<span></span>'}</div>
     ${tourMode ? (() => { const n = [['a', 't1'], ['b', 't2']].flatMap(([sd, tm]) => g.slots[sd].filter(Boolean).filter(id => PIDX[id] && !PIDX[id].team).map(id => `${esc(PIDX[id].name)} (no team) plays for ${esc(tName(tm))} in this group.`)); return n.length ? `<div class="small" style="color:var(--muted)">${n.join(' ')}</div>` : ''; })() : ''}
@@ -705,7 +776,7 @@ function groupEditor(d, g, i) {
 }
 
 /* ---------- entry sheet ---------- */
-function curUnit() { const day = DAY(); const g = day.groups.find(x => x.id === ui.group); return unitsOf(day, g)[ui.unit[day.id + ':' + g.id] || 0]; }
+function curUnit() { const day = DAY(); const g = day.groups.find(x => x.id === ui.group); return unitsOf(day, g, true)[ui.unit[day.id + ':' + g.id] || 0]; }
 function openEntry(i) {
   const u = curUnit();
   if (!canEdit(u)) { toast(viewOnly(u.day) ? 'This session is view only.' : locks[u.key] ? 'Scores are locked. Ask an administrator to make a change.' : 'You can only enter scores for your own match.'); return; }
@@ -810,7 +881,7 @@ document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender
 
 function stopWatching() { unsubs.forEach(u => u && u()); unsubs = []; }
 function openTour(id) {
-  stopWatching(); tourId = id; tour = null; scores = {}; locks = {};
+  stopWatching(); tourId = id; tour = null; scores = {}; locks = {}; sides = {}; ui.sideEdit = null;
   server.tour = null; server.scores = {}; server.locks = {};
   store(':tour', id); if (!location.hash.includes('e=' + id)) history.replaceState(null, '', '#e=' + id);
   gate = { state: 'loading' }; render();
@@ -827,6 +898,9 @@ function openTour(id) {
   unsubs.push(fb.watchColl(`events/${id}/scores`, (docs, meta) => {
     const s = {}; docs.forEach(({ data }) => ((s[data.dayId] = s[data.dayId] || {})[data.ent] = data.holes));
     scores = s; server.scores = clone(s); sync.pending = meta.pending; sync.cached = meta.cached; if (tour) safeRender();
+  }, () => {}));
+  unsubs.push(fb.watchColl(`events/${id}/sides`, docs => {
+    const m = {}; docs.forEach(({ data }) => (m[data.dayId + ':' + data.groupId] = data)); sides = m; if (tour) safeRender();
   }, () => {}));
   unsubs.push(fb.watchColl(`events/${id}/locks`, docs => {
     const l = {}; docs.forEach(({ id: k, data }) => (l[k] = data)); locks = l; server.locks = clone(l); if (tour) safeRender();
@@ -1178,7 +1252,9 @@ document.addEventListener('click', e => {
   else if (t.id === 'addday') { const last = tour.days[tour.days.length - 1]; const nd = new Date(last.date + 'T00:00'); nd.setDate(nd.getDate() + 1);
     const day = { id: uid('d'), title: 'Session ' + (tour.days.length + 1), scoring: last.scoring || 'stableford', mode: 'edit', date: nd.toISOString().slice(0, 10), courseId: last.courseId, teeId: last.teeId, teamsOn: true, hidden: true, briefing: '', groups: [] };
     tour.days.push(day); ui.open['day:' + day.id] = true; render(); toast(`${day.title} added. It stays hidden from players until you show it.`); }
-  else if (d.addgroup) { const day = dayById(d.addgroup); day.groups.push({ id: uid('g'), tee: '', format: 'fourball', method: 'front', value: 1, slots: { a: [], b: [] } }); render(); }
+  else if (d.addgroup) { const day = dayById(d.addgroup); const last = hhmm(day.groups[day.groups.length - 1]?.tee);
+    let tee = ''; if (last) { const [h, m] = last.split(':').map(Number); const t = h * 60 + m + 9; tee = `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; }
+    day.groups.push({ id: uid('g'), tee, format: isTour() && day.teamsOn !== false ? 'fourball' : 'individual', method: 'front', value: 1, slots: { a: [], b: [] } }); render(); }
   else if (d.delgroup) { const day = dayById(d.did); day.groups = day.groups.filter(g => g.id !== d.delgroup); render(); }
   else if (d.delp) { ui.confirmDel = ui.confirmDel === d.delp ? null : d.delp; render(); }
   else if ('delno' in d) { ui.confirmDel = null; render(); }
@@ -1187,6 +1263,27 @@ document.addEventListener('click', e => {
     tour.days.forEach(day => day.groups.forEach(g => { g.slots.a = g.slots.a.map(x => (x === pid ? null : x)); g.slots.b = g.slots.b.map(x => (x === pid ? null : x)); }));
     ui.confirmDel = null; render(); toast(`${nm} removed.`); }
   else if (d.tsort) { ui.teamSort = d.tsort; render(); }
+  else if (d.grade) { ui.grade = d.grade; render(); }
+  else if (d.gmove) { const day = dayById(d.did); const i = day.groups.findIndex(g => g.id === d.gid); const j = i + +d.gmove;
+    if (j < 0 || j >= day.groups.length) return;
+    // Groups swap places; tee times stay with the slot in the order of play.
+    const ti = day.groups[i].tee, tj = day.groups[j].tee;
+    [day.groups[i], day.groups[j]] = [day.groups[j], day.groups[i]]; day.groups[i].tee = ti; day.groups[j].tee = tj;
+    render(); toast(`Group moved to ${j + 1}${tj ? ` (${teeTxt(tj)})` : ''}.`); }
+  else if ('sideedit' in d) { const g = DAY().groups.find(x => x.id === ui.group); const key = DAY().id + ':' + g.id; const sm = sides[key];
+    const ps = groupPlayers(g); const half = Math.ceil(ps.length / 2);
+    ui.sideEdit = { key, type: sm?.type || (ps.length === 4 ? 'fourball' : ps.length === 3 ? 'cutthroat' : 'singles'), method: sm?.method || 'front', a: sm?.a ? [...sm.a] : ps.slice(0, half), b: sm?.b ? [...sm.b] : ps.slice(half) }; render(); }
+  else if ('smcancel' in d) { ui.sideEdit = null; render(); }
+  else if (d.smtype) { ui.sideEdit.type = d.smtype; render(); }
+  else if (d.smmethod) { ui.sideEdit.method = d.smmethod; render(); }
+  else if (d.smside) { const e2 = ui.sideEdit; e2.a = e2.a.filter(x => x !== d.pid); e2.b = e2.b.filter(x => x !== d.pid); e2[d.smside].push(d.pid); render(); }
+  else if ('smsave' in d) { const e2 = ui.sideEdit; const [dayId, groupId] = e2.key.split(':'); const g = findGroup(dayId, groupId);
+    const doc = e2.type === 'cutthroat' ? { type: 'cutthroat', players: groupPlayers(g) } : { type: e2.type, method: e2.method, a: e2.a, b: e2.b };
+    sides[e2.key] = doc; ui.sideEdit = null; ui.unit[e2.key] = 1;
+    fb.set(`events/${tourId}/sides/${dayId}_${groupId}`, { ...doc, dayId, groupId, by: me.uid, at: fb.now() }).catch(err => failed('Side match not saved', err));
+    render(); toast('Side match set up.'); }
+  else if ('sidedel' in d) { const key = DAY().id + ':' + ui.group; delete sides[key]; ui.unit[key] = 0;
+    fb.del(`events/${tourId}/sides/${DAY().id}_${ui.group}`).catch(err => failed('Side match not removed', err)); render(); }
   else if ('swapyes' in d) { const w = ui.swap; ui.swap = null; if (w) { findGroup(w.did, w.gid).slots[w.side][w.k] = w.nv; } render(); }
   else if ('swapno' in d) { ui.swap = null; render(); }
   else if (d.mode && d.did) { dayById(d.did).mode = d.mode; render(); toast(d.mode === 'view' ? 'Session is now view only for players.' : 'Players can enter scores again.'); }
@@ -1211,7 +1308,8 @@ document.addEventListener('change', e => {
   else if (t.id === 'cbt') { ui.cb = t.checked; render(); }
   else if (t.id === 'ack') { const b = document.querySelector('[data-submit]'); if (b) b.disabled = !t.checked; }
   else if (d.teamname) { tour.teams[d.teamname].name = t.value.trim() || (d.teamname === 't1' ? 'Team 1' : 'Team 2'); render(); }
-  else if (d.tf) { if (d.tf === 'pointsToWin') { const n = parseFloat(t.value); if (!isNaN(n)) tour.pointsToWin = n; } else tour[d.tf] = t.value; render(); }
+  else if (d.tf) { if (d.tf === 'pointsToWin') { const n = parseFloat(t.value); if (!isNaN(n)) tour.pointsToWin = n; } else if (d.tf === 'gradeCut') { const n = parseInt(t.value, 10); if (!isNaN(n)) tour.gradeCut = n; } else tour[d.tf] = t.value; render(); }
+  else if (t.name === 'evstatus') { tour.status = t.value; render(); toast(`Event is now ${statusName(t.value)}.`); }
   else if (d.phone) { setPhone(d.phone, t.value); }
   else if (d.pp) { const pid = d.pid;
     if (d.pp === 'phone') setPhone(pid, t.value);
@@ -1230,7 +1328,10 @@ document.addEventListener('change', e => {
     else if (d.df === 'shown') day.hidden = !t.checked; else day[d.df] = t.value; render(); }
   else if (d.gf) { const g = findGroup(d.did, d.gid);
     if (d.gf === 'value') g.value = parseFloat(t.value);
-    else if (d.gf === 'format') { g.format = t.value; const f = FORMATS[g.format]; g.slots.a = g.slots.a.slice(0, f.a); g.slots.b = g.slots.b.slice(0, f.b); if (g.format === 'twoVone') g.value = 0.5; if (g.format.startsWith('ambrose') && !g.ambIds) g.ambIds = g.format === 'ambroseMatch' ? [g.id + '-a', g.id + '-b'] : [g.id + '-t']; }
+    else if (d.gf === 'format') { g.format = t.value; const f = FORMATS[g.format];
+      if (!f.b) { g.slots.a = [...g.slots.a, ...g.slots.b].filter(Boolean); g.slots.b = []; }   // one list of players: keep everyone from both sides
+      g.slots.a = g.slots.a.slice(0, f.a); g.slots.b = g.slots.b.slice(0, f.b); if (g.format === 'twoVone') g.value = 0.5; if (g.format.startsWith('ambrose') && !g.ambIds) g.ambIds = g.format === 'ambroseMatch' ? [g.id + '-a', g.id + '-b'] : [g.id + '-t']; }
+    else if (d.gf === 'tee') g.tee = hhmm(t.value);
     else g[d.gf] = t.value; render(); }
   else if (d.slot) { const g = findGroup(d.did, d.gid); const side = d.slot[0], k = +d.slot.slice(1); const old = g.slots[side][k]; const nv = t.value || null;
     const held = old && old !== nv && !g.format.startsWith('ambrose') ? scFor(d.did, old).filter(v => v !== null).length : 0;

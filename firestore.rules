@@ -92,6 +92,18 @@ service cloud.firestore {
           && request.resource.data.holes.size() == 18);
       }
 
+      // Side matches: a group playing individual scoring can set up its own match (not part of any Cup).
+      match /sides/{sid} {
+        allow read: if evAdmin() || evMember();
+        allow create, update: if evAdmin() || (evMember()
+          && sid == request.resource.data.dayId + '_' + request.resource.data.groupId
+          && ev().access[request.resource.data.dayId][me()] == request.resource.data.groupId
+          && !('__viewonly' in ev().access[request.resource.data.dayId]));
+        allow delete: if evAdmin() || (evMember()
+          && ev().access[resource.data.dayId][me()] == resource.data.groupId
+          && !('__viewonly' in ev().access[resource.data.dayId]));
+      }
+
       match /locks/{k} {
         allow read: if evAdmin() || evMember();
         allow create: if evAdmin() || (evMember() && ev().access[request.resource.data.dayId][me()] == request.resource.data.groupId);

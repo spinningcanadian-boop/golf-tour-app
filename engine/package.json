@@ -1,1 +1,1 @@
-{"name":"golf-engine","type":"module","private":true,"scripts":{"test":"node --experimental-strip-types --no-warnings --test test/engine.test.ts test/barnbougle.test.ts test/mockup2.test.ts test/novelty.test.ts"}}
+{"name":"golf-engine","type":"module","private":true,"scripts":{"test":"node --experimental-strip-types --no-warnings --test test/engine.test.ts test/barnbougle.test.ts test/mockup2.test.ts test/novelty.test.ts test/cutthroat.test.ts"}}

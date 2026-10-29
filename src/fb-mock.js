@@ -70,9 +70,10 @@ function allowed(path, data, del) {
     const evAdmin = w.appAdmin || (w.pid && ev.eventAdmins.includes(w.pid));
     if (evAdmin) return true;
     const member = w.pid && ev.visibleTo.includes(w.pid);
-    if (!member || del) return false;
+    if (!member || (del && p[2] !== 'sides')) return false;
     const acc = ev.access?.[data.dayId] || {};
     if (p[2] === 'locks') return !cur && acc[w.pid] === data.groupId;
+    if (p[2] === 'sides') return acc[w.pid] === data.groupId && !acc.__viewonly;
     if (p[2] === 'scores') return acc[w.pid] === data.groupId && acc[data.ent] === data.groupId && !acc.__viewonly && !s[`events/${p[1]}/locks/${data.unitKey}`] && data.holes.length === 18;
   }
   return false;

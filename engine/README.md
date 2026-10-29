@@ -57,6 +57,13 @@ Pure calculation code (TypeScript, no UI, no database). Run the tests with Node 
 - **Event status**: Planning (administrators only) · Active (players can see and score) · Complete (players can see) · Archived (hidden from players) · Delete (Owner and app admins).
 - **Bottom tabs**: Order of Play · Scores · Leaders · Cup (Tours only) · Setup (administrators).
 
+### Side matches and cut throat (30 Oct)
+- A group playing individual scoring can set up its own **side match** (any player in the group, or an administrator): 4-ball (2 v 2), singles (pairs, first left v first right) or **cut throat** (3 or 4 players). Front or back of card for 4-ball and singles. Side matches never count towards a Cup.
+- **Cut throat**: each player's Stableford points with full handicap. The best score on a hole wins it outright; a shared best score halves it; no carry-overs. A hole counts once every player has scored. Most holes won wins (ties shared). (`cutthroat.ts`)
+- Individual scoring is now called **Stroke** (net stroke play): Stableford, Stableford + Stroke, or Stroke only. A Stroke-only session lists its individual group type as "Individual stroke".
+- **Grades** for Novelty stats: A grade = event handicap up to the event's threshold (default 16); B grade = above it.
+- Groups can be moved up or down; tee times stay with the slot in the order of play. Tee times use the phone's time picker and show as 12-hour (7:30 AM).
+
 ## Open questions
 - None at present.
 
