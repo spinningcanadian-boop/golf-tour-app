@@ -37,6 +37,18 @@ Pure calculation code (TypeScript, no UI, no database). Run the tests with Node 
 | Live leaderboards | Stableford points and net to par through the holes played; partial rounds sit below the finished players they are level with and share their rank; countback note sits with the player ahead; identical cards = tied on all countbacks |
 | Not built yet | Foursomes; novelty events (multipliers, 2-ball best-ball Stableford). Ambrose countback not needed. |
 
+### Novelty stats (added 29 Oct, `novelty.ts`)
+- Gross scores against par. Top 3 shown, with everyone level on 3rd place included (shared ranks show as T).
+- **Bogey train**: longest run of consecutive holes at bogey or worse; a pickup (P) counts. **Par train**: longest run at par or better; a pickup breaks it.
+- A run stays within one round (it does not carry from the 18th into the next session). Only each player's longest run per round is listed, with its hole range.
+- **Birdies** counts birdie or better; **Pars** counts pars exactly.
+- Shown per session or for the event to date. Ambrose groups are not included.
+
+### Sessions (29 Oct)
+- An Event has Sessions. "Tour" is a switch on the event; only a Tour shows teams, team colours and the Cup.
+- Each session sets individual scoring: Stableford (default), Stableford + Net, or Net only. Leaders shows only the tabs that apply.
+- Each session is "View and edit" or "View only". In View only, players cannot change scores (enforced in the database rules too); administrators still can.
+
 ## Open questions
 - None at present.
 
