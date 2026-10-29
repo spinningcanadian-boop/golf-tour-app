@@ -51,6 +51,12 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .top .row { max-width: 760px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .top h1 { margin: 0; font: 700 21px/1.1 var(--f-display); letter-spacing: .01em; white-space: nowrap; }
 .top .who { font-size: 12px; opacity: .85; text-align: right; }
+.top .who .evname { display: block; font: 700 17px/1.15 var(--f-display); opacity: 1; max-width: 52vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto; }
+.top .who .role { opacity: .85; }
+.novs { display: grid; gap: 4px; padding-bottom: 6px; }
+@media (min-width: 620px) { .novs { grid-template-columns: 1fr 1fr; } }
+.nov-h { display: flex; flex-direction: column; padding: 10px 14px 2px; }
+.nov .note { display: block; font-size: 12px; color: var(--muted); }
 main { max-width: 760px; margin: 0 auto; padding-block: 14px 120px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 14px; }
 .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: clip; }
@@ -315,9 +321,9 @@ select.warnsel { background: color-mix(in srgb, var(--as) 22%, var(--surface)); 
 <div id="overlay"></div>
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="app.js?v=38a6c666fd"></script>
+<script src="app.js?v=bb908eedbf"></script>
 <script>
-window.APP_VERSION = '38a6c666fd';
+window.APP_VERSION = 'bb908eedbf';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
   // When a new version takes over, reload once so the screen shows it.

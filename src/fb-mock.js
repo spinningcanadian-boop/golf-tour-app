@@ -26,6 +26,7 @@ function allowed(path, data, del) {
     const acc = tour.access?.[data.dayId] || {};
     const okGroup = acc[member.playerId] === data.groupId && (p[2] === 'locks' || acc[data.ent] === data.groupId);
     const notLocked = p[2] === 'locks' || !s[`tours/${p[1]}/locks/${data.unitKey}`];
+    if (acc.__viewonly) return false;
     return okGroup && notLocked;
   }
   return false;

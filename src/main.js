@@ -39,6 +39,11 @@ function toast(msg) { const t = document.getElementById('toast'); t.textContent 
 const P = () => Object.fromEntries(tour.players.map(p => [p.id, p]));
 let PIDX = {};
 const dayById = id => tour.days.find(d => d.id === id);
+const isTour = () => tour.isTour !== false;
+const scoringOf = d => d.scoring || 'stableford';           // 'stableford' | 'both' | 'net'
+const hasStab = d => scoringOf(d) !== 'net';
+const hasNet = d => scoringOf(d) !== 'stableford';
+const viewOnly = d => d.mode === 'view';
 const visibleDays = () => (isAdmin() ? tour.days : tour.days.filter(d => !d.hidden));
 const DAY = () => { const v = visibleDays(); return v.find(d => d.id === ui.day) || v[0] || null; };
 const teeOf = day => { const c = tour.courses.find(c => c.id === day.courseId); const t = c && c.tees.find(t => t.id === day.teeId); return c && t ? { name: c.name, tee: t.name, colour: t.colour, holes: t.holes, par: t.holes.reduce((a, h) => a + h.par, 0) } : null; };
@@ -79,7 +84,7 @@ function ambTeams(g) {
 }
 function unitsOf(day, g) {
   const key = i => `${day.id}:${g.id}:${i}`;
-  const teamsOn = day.teamsOn !== false;
+  const teamsOn = isTour() && day.teamsOn !== false;
   if (g.format === 'ambroseMatch') {
     const [a, b] = ambTeams(g); if (!a.players.length || !b.players.length) return [];
     return [{ key: key(0), g, day, kind: 'ambroseMatch', sides: [[a.id], [b.id]], teams: teamsOn ? sideTeams(a.players, b.players) : ['n1', 'n2'], label: `${a.name} v ${b.name}`, value: g.value, ents: [a.id, b.id], teamsOn }];
@@ -136,7 +141,7 @@ function boardsLive() {
 }
 const canSeeAll = () => isAdmin() || boardsLive();
 const canSeeGroup = g => canSeeAll() || (myGroup() && myGroup().id === g.id);
-const canEdit = u => isAdmin() || (!locks[u.key] && myUnits(u.day).some(x => x.key === u.key));
+const canEdit = u => isAdmin() || (!locks[u.key] && !viewOnly(u.day) && myUnits(u.day).some(x => x.key === u.key));
 
 /* ---------- team colours ---------- */
 const SWATCHES = [['Red', '#c8372d'], ['Blue', '#2a5fb0'], ['Aussie green', '#00843d'], ['Gold', '#f2b705'], ['Orange', '#e06c1f'], ['Purple', '#6b3fa0'], ['Black', '#26292e'], ['Teal', '#0f8b8d']];
@@ -212,7 +217,7 @@ function miniMatch(u, m) {
 }
 function daySwitch() {
   if (visibleDays().length < 2) return '';
-  return `<div class="chips" role="toolbar" aria-label="Days">${visibleDays().map(d => `<button aria-pressed="${d.id === DAY().id}" data-day="${d.id}">${esc(d.title)} · ${fmtDate(d.date)}${d.hidden ? ' · hidden' : ''}</button>`).join('')}</div>`;
+  return `<div class="chips" role="toolbar" aria-label="Sessions">${visibleDays().map(d => `<button aria-pressed="${d.id === DAY().id}" data-day="${d.id}">${esc(d.title)} · ${fmtDate(d.date)}${d.hidden ? ' · hidden' : ''}</button>`).join('')}</div>`;
 }
 
 /* ---------- Day ---------- */
@@ -220,7 +225,7 @@ function viewDay() {
   const day = DAY();
   const viewing = !isRealAdmin() ? '' : `<section class="card"><div class="pad"><div class="frow"><label for="as">Preview as <span class="muted small">(administrators only: see the app as a player would)</span></label>
     <select id="as"><option value="admin" ${isAdmin() ? 'selected' : ''}>Administrator</option>${tour.players.map(p => `<option value="${p.id}" ${ui.as === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div></div></section>`;
-  if (!course) return viewing + daySwitch() + `<section class="card"><div class="pad">${esc(day.title)} has no course yet. ${isAdmin() ? 'Choose one in Setup > Days.' : ''}</div></section>`;
+  if (!course) return viewing + daySwitch() + `<section class="card"><div class="pad">${esc(day.title)} has no course yet. ${isAdmin() ? 'Choose one in Setup > Sessions & groups.' : ''}</div></section>`;
   const order = day.groups.map((g, gi) => {
     const units = unitsOf(day, g); const visible = canSeeGroup(g);
     const ents = units.flatMap(u => u.ents);
@@ -242,7 +247,7 @@ function viewDay() {
 /* ---------- Scores ---------- */
 function viewScores() {
   const day = DAY();
-  if (!course) return daySwitch() + `<section class="card"><div class="pad">No course set for this day yet.</div></section>`;
+  if (!course) return daySwitch() + `<section class="card"><div class="pad">No course set for this session yet.</div></section>`;
   const groups = day.groups.filter(canSeeGroup);
   if (!groups.length) return daySwitch() + `<section class="card"><div class="pad">${day.groups.length ? 'You are not in a group on this day.' : 'No groups posted yet.'}</div></section>`;
   if (!groups.find(g => g.id === ui.group)) ui.group = (myGroup() || groups[0]).id;
@@ -312,12 +317,13 @@ function viewScores() {
       return `<tr><td><span class="dot ${a.team || ''}"></span>${esc(a.name)}</td><td class="thru ${t === 18 ? 'f' : ''}">${t === 18 ? 'F' : t}</td><td class="num" style="font-weight:500">${+c.teamHandicap.toFixed(2)}</td><td class="num">${c.gross || '–'}</td><td class="num">${t < 18 ? '–' : c.dq ? 'DQ' : +c.net.toFixed(2)}</td></tr>`;
     }).join('')}</tbody></table>${u.kind === 'ambroseMatch' ? `<div class="pad small muted">Team handicaps ${m.teamHandicaps.map(v => +v.toFixed(2)).join(' v ')}: ${Math.max(...m.strokesReceived)} shots to ${esc(m.strokesReceived[0] ? entName(u.sides[0][0]) : entName(u.sides[1][0]))} on the stroke index.</div>` : ''}</section>`;
   } else {
-    summary += `<section class="card"><h2>Group ${gn} scores</h2><table class="lb"><thead><tr><th>Player</th><th class="thru">Thru</th><th class="num">Pts</th><th class="num">Gross Stab</th><th class="num">Net</th></tr></thead><tbody>${groupPlayers(g).map(id => {
+    const S = hasStab(day), N = hasNet(day);
+    summary += `<section class="card"><h2>Group ${gn} scores</h2><table class="lb"><thead><tr><th>Player</th><th class="thru">Thru</th>${S ? '<th class="num">Pts</th><th class="num">Gross Stab</th>' : ''}${N ? '<th class="num">Net</th>' : ''}</tr></thead><tbody>${groupPlayers(g).map(id => {
       const c = cardOf(id); const t = c.holesEntered; const pu = sc(id).some(v => v === 'P');
       const played = c.holes.filter(l => typeof l.score === 'number');
       const ntp = played.reduce((a, l) => a + l.score - l.par - l.strokes, 0); const gross = played.reduce((a, l) => a + l.score, 0);
       const net = pu ? 'DQ' : t === 18 ? `${gross - c.handicap}` : t ? toParTxt(ntp) : '–';
-      return `<tr><td><span class="dot ${PIDX[id].team || ''}"></span>${esc(PIDX[id].name)}</td><td class="thru ${t === 18 ? 'f' : ''}">${t === 18 ? 'F' : t}</td><td class="num">${c.points}</td><td class="num">${c.grossStableford ?? '–'}</td><td class="num">${net}</td></tr>`;
+      return `<tr><td><span class="dot ${PIDX[id].team || ''}"></span>${esc(PIDX[id].name)}</td><td class="thru ${t === 18 ? 'f' : ''}">${t === 18 ? 'F' : t}</td>${S ? `<td class="num">${c.points}</td><td class="num">${c.grossStableford ?? '–'}</td>` : ''}${N ? `<td class="num">${net}</td>` : ''}</tr>`;
     }).join('')}</tbody></table></section>`;
   }
   return `${daySwitch()}<section class="card"><div class="pad coursebar"><span><b>${esc(course.name)}</b></span><span class="tee"><i></i>${esc(course.tee)} tees · Par ${course.par}</span></div></section>
@@ -330,6 +336,7 @@ function viewScores() {
 }
 function submitHTML(u) {
   if (locks[u.key]) return `<div class="submit"><span class="ok">Scores submitted and locked.</span><span class="small muted">If something is wrong, ask an administrator to change it.</span>${isAdmin() ? `<div><button class="btn" data-unlock="${u.key}">Unlock for changes</button></div>` : ''}</div>`;
+  if (!isAdmin() && viewOnly(u.day)) return `<div class="submit"><span class="small muted">This session is view only: scores can no longer be changed. Ask an administrator if something is wrong.</span></div>`;
   if (!canEdit(u)) return `<div class="submit"><span class="small muted">Only players in this ${u.kind === 'individual' ? 'group' : 'match'} can enter and submit these scores.</span></div>`;
   const done = unitComplete(u);
   return `<div class="submit"><label class="switch"><input type="checkbox" id="ack" ${done ? '' : 'disabled'}> I confirm these scores are correct</label>
@@ -343,10 +350,17 @@ function viewLeaders() {
   const day = DAY();
   const multi = visibleDays().length > 1;
   const scope = multi ? ui.lbScope : 'day';
-  const tabs = scope === 'tour' ? [['stab', 'Stableford'], ['gross', 'Gross Stab']] : [['stab', 'Stableford'], ['gross', 'Gross Stab'], ['net', 'Net'], ['amb', 'Ambrose']];
+  const anyStab = visibleDays().some(hasStab);
+  const indiv = d => d.groups.some(g => !g.format.startsWith('ambrose') && groupPlayers(g).length);
+  const tabs = scope === 'tour'
+    ? [...(anyStab ? [['stab', 'Stableford'], ['gross', 'Gross Stab']] : []), ['nov', 'Novelty']]
+    : [...(hasStab(day) && indiv(day) ? [['stab', 'Stableford'], ['gross', 'Gross Stab']] : []), ...(hasNet(day) && indiv(day) ? [['net', 'Net']] : []),
+       ...(day.groups.some(g => g.format.startsWith('ambrose')) ? [['amb', 'Ambrose']] : []), ...(indiv(day) ? [['nov', 'Novelty']] : [])];
+  if (!tabs.length) return daySwitch() + `<section class="card"><div class="pad">No leaderboards for this session yet.</div></section>`;
+  if (!tabs.find(t => t[0] === ui.lb)) ui.lb = tabs[0][0];
   if (!tabs.find(t => t[0] === ui.lb)) ui.lb = 'stab';
   const seg = `<div class="seg" role="group" aria-label="Leaderboard">${tabs.map(([k, l]) => `<button aria-pressed="${ui.lb === k}" data-lb="${k}">${l}</button>`).join('')}</div>`;
-  const scopeSeg = multi ? `<div class="seg" role="group" aria-label="Day or tour">${[['day', esc(day.title)], ['tour', 'Tour to date']].map(([k, l]) => `<button aria-pressed="${scope === k}" data-scope="${k}">${l}</button>`).join('')}</div>` : '';
+  const scopeSeg = multi ? `<div class="seg" role="group" aria-label="Session or event">${[['day', esc(day.title)], ['tour', 'Event to date']].map(([k, l]) => `<button aria-pressed="${scope === k}" data-scope="${k}">${l}</button>`).join('')}</div>` : '';
   const nm = id => `<span class="dot ${PIDX[id]?.team || ''}"></span>${esc(PIDX[id]?.name)}`;
   const thruTd = t => `<td class="thru ${t === 18 ? 'f' : ''}">${t === 18 ? 'F' : t}</td>`;
   const cbNote = r => {
@@ -360,7 +374,10 @@ function viewLeaders() {
     return `<tr class="tap" data-open="lb:${id}" tabindex="0" aria-expanded="${!!open}">${rowHtml}<td class="pm">${open ? '−' : '+'}</td></tr>${open ? `<tr class="detail"><td colspan="${cols + 1}">${detail()}</td></tr>` : ''}`;
   };
   let head = '', body = '', note = '';
-  if (scope === 'tour') {
+  if (ui.lb === 'nov') {
+    ({ body, note } = noveltyView(scope === 'tour' ? visibleDays().filter(d => teeOf(d)) : [day]));
+    head = null;
+  } else if (scope === 'tour') {
     const playedDays = visibleDays().filter(d => teeOf(d));
     const ids = tour.players.map(p => p.id).filter(id => playedDays.some(d => d.groups.some(g => !g.format.startsWith('ambrose') && groupPlayers(g).includes(id))));
     const roundOf = (id, d) => { const inDay = d.groups.some(g => !g.format.startsWith('ambrose') && groupPlayers(g).includes(id)); if (!inDay) return null; const c = cardOf(id, d); if (!c.holesEntered) return null;
@@ -368,7 +385,7 @@ function viewLeaders() {
     const lb = E.aggregateLeaderboard(ids.map(id => ({ player: id, rounds: playedDays.map(d => roundOf(id, d)) })), ui.lb === 'stab' ? 'higher' : 'lower');
     head = `<th>Pos</th><th>Player</th>${playedDays.map((d, i) => `<th class="num">R${i + 1}</th>`).join('')}<th class="num">Total</th><th></th>`;
     body = lb.map(r => expandable(r.entry.player, playedDays.length + 3, `<td class="pos">${E.rankLabel(r)}</td><td>${nm(r.entry.player)}${r.missedRounds ? '<span class="note">Missing a round</span>' : ''}</td>${r.entry.rounds.map(v => `<td class="num" style="font-weight:500">${v ?? '–'}</td>`).join('')}<td class="num">${r.total}</td>`, () => playedDays.map(d => `<div class="small muted" style="padding:8px 8px 0">${esc(d.title)}</div>${miniPlayer(r.entry.player, d)}`).join(''))).join('');
-    note = ui.lb === 'stab' ? 'Total Stableford points across the tour. No countback: equal totals share the place. Anyone missing a round is listed at the bottom.' : 'Gross Stableford totals for finished rounds. Lower is better.';
+    note = ui.lb === 'stab' ? 'Total Stableford points across the event. No countback: equal totals share the place. Anyone missing a round is listed at the bottom.' : 'Gross Stableford totals for finished rounds. Lower is better.';
   } else {
     const ids = day.groups.filter(g => !g.format.startsWith('ambrose')).flatMap(groupPlayers);
     const entries = ids.map(id => ({ player: id, card: cardOf(id) }));
@@ -399,13 +416,34 @@ function viewLeaders() {
   const banner = isAdmin() && !boardsLive() ? '<div class="banner">Players cannot see leaderboards right now. You can see them as the administrator.</div>' : '';
   return `${banner}${daySwitch()}<section class="card"><div class="ghead"><div class="t"><div><div class="eyebrow">${esc(tour.title)}</div><h2>Leaderboards</h2></div>
     ${scope === 'day' && (ui.lb === 'stab' || ui.lb === 'net') ? `<label class="switch"><input type="checkbox" id="cbt" ${ui.cb ? 'checked' : ''}> Countback details</label>` : ''}</div>${scopeSeg}${seg}</div>
-    <div class="pad small muted" style="padding-block:8px 4px">${note}${ui.lb !== 'amb' ? ' Tap a player to see their card.' : ''}</div>
-    <div style="overflow-x:auto"><table class="lb"><thead><tr>${head}</tr></thead><tbody>${body || '<tr><td colspan="6" class="muted">No scores yet.</td></tr>'}</tbody></table></div></section>`;
+    <div class="pad small muted" style="padding-block:8px 4px">${note}${ui.lb !== 'amb' && ui.lb !== 'nov' ? ' Tap a player to see their card.' : ''}</div>
+    ${head === null ? body : `<div style="overflow-x:auto"><table class="lb"><thead><tr>${head}</tr></thead><tbody>${body || '<tr><td colspan="6" class="muted">No scores yet.</td></tr>'}</tbody></table></div>`}</section>`;
+}
+
+function noveltyView(days) {
+  const rounds = days.flatMap(d => { const crs = teeOf(d); if (!crs) return [];
+    return d.groups.filter(g => !g.format.startsWith('ambrose')).flatMap(groupPlayers).map(id => ({ player: id, session: d.id, pars: crs.holes.map(h => h.par), scores: scFor(d.id, id) })); });
+  const st = E.noveltyStats(rounds, 3);
+  const multi = days.length > 1;
+  const sessName = id => esc(dayById(id)?.title || '');
+  const nm = id => `<span class="dot ${PIDX[id]?.team || ''}"></span>${esc(PIDX[id]?.name || '?')}`;
+  const block = (title, desc, rows, val, extra) => `<div class="nov"><div class="nov-h"><b>${title}</b><span class="small muted">${desc}</span></div>
+    ${rows.length ? `<table class="lb"><tbody>${rows.map(r => `<tr><td class="pos">${r.tied ? 'T' : ''}${r.rank}</td><td>${nm(r.item.player)}${extra ? `<span class="note">${extra(r.item)}</span>` : ''}</td><td class="num">${val(r.item)}</td></tr>`).join('')}</tbody></table>` : '<div class="pad small muted">Nothing yet.</div>'}</div>`;
+  const range = x => `Holes ${x.from}–${x.to}${multi ? ` · ${sessName(x.session)}` : ''}`;
+  return {
+    note: multi ? 'Top 3 across the whole event so far. Trains are counted within a single round.' : 'Top 3 in this session so far.',
+    body: `<div class="novs">
+      ${block('Bogey train', 'Longest run of bogey or worse (pickups count)', st.bogeyTrain, x => x.length, range)}
+      ${block('Par train', 'Longest run of par or better', st.parTrain, x => x.length, range)}
+      ${block('Birdies', 'Birdie or better', st.birdies, x => x.count)}
+      ${block('Pars', 'Total pars', st.pars, x => x.count)}</div>`,
+  };
 }
 
 /* ---------- Cup ---------- */
 function viewCup() {
   if (!canSeeAll()) return hiddenNote();
+  if (!isTour()) return `<section class="card"><div class="pad">This event is not a Tour, so there is no Cup.</div></section>`;
   const sessions = visibleDays().filter(d => d.teamsOn !== false && teeOf(d)).map(d => {
     const ms = d.groups.flatMap(g => unitsOf(d, g)).filter(u => (u.kind === 'match' || u.kind === 'ambroseMatch') && u.teams[0] && u.teams[1]).map(u => ({ u, m: matchOf(u) }));
     const tot = [0, 0]; ms.forEach(({ u, m }) => { const s = u.teams[0] === 't1' ? 0 : 1; tot[0] += m.points[s]; tot[1] += m.points[1 - s]; });
@@ -430,20 +468,21 @@ function viewCup() {
 
 /* ---------- Setup (administrator) ---------- */
 function viewSetup() {
-  const tabs = [['tour', 'Tour'], ['players', 'Players'], ['courses', 'Courses'], ['days', 'Days & groups']];
+  const tabs = [['tour', 'Event'], ['players', 'Players'], ['courses', 'Courses'], ['days', 'Sessions & groups']];
   const seg = `<div class="seg" role="group" aria-label="Setup section">${tabs.map(([k, l]) => `<button aria-pressed="${ui.setup === k}" data-setup="${k}">${l}</button>`).join('')}</div>`;
   const body = ui.setup === 'tour' ? setupTour() : ui.setup === 'players' ? setupPlayers() : ui.setup === 'courses' ? setupCourses() : setupDays();
   return `<section class="card"><div class="ghead"><div class="eyebrow">Administrator</div><h2>Set-up</h2>${seg}</div>${body}</section>
-    <section class="card"><div class="pad" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between"><span class="small muted">Signed in as ${esc(me.email || 'administrator')}. App version ${esc(window.APP_VERSION || 'dev')}.</span><span style="display:flex;gap:8px"><button class="btn" data-mytours>My tours</button><button class="btn" data-signout>Sign out</button></span></div></section>`;
+    <section class="card"><div class="pad" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between"><span class="small muted">Signed in as ${esc(me.email || 'administrator')}. App version ${esc(window.APP_VERSION || 'dev')}.</span><span style="display:flex;gap:8px"><button class="btn" data-mytours>My events</button><button class="btn" data-signout>Sign out</button></span></div></section>`;
 }
 function setupTour() {
   return `<div class="form">
     <div class="frow prevbox"><label for="as">See the app as a player</label><span class="small muted">Pick a player to check exactly what they will see. A banner lets you switch back.</span>
       <select id="as"><option value="admin" selected>Choose a player…</option>${[...tour.players].sort(teamFirst).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
-    <div class="frow"><label for="t-title">Tour name</label><input type="text" id="t-title" data-tf="title" value="${esc(tour.title)}"></div>
-    ${['t1', 't2'].map((t, i) => `<div class="frow"><label for="tn-${t}">Team ${i + 1}</label><input type="text" id="tn-${t}" value="${esc(tour.teams[t].name)}" data-teamname="${t}">
+    <div class="frow"><label for="t-title">Event name</label><input type="text" id="t-title" data-tf="title" value="${esc(tour.title)}"></div>
+    <label class="switch tourmode"><input type="checkbox" id="istour" ${isTour() ? 'checked' : ''}> <span>This event is a Tour<span class="small muted" style="display:block;font-weight:500">Two teams play matches for a Cup. Turn on to show team settings, team colours and the Cup page.</span></span></label>
+    ${!isTour() ? '' : ['t1', 't2'].map((t, i) => `<div class="frow"><label for="tn-${t}">Team ${i + 1}</label><input type="text" id="tn-${t}" value="${esc(tour.teams[t].name)}" data-teamname="${t}">
       <div class="swatches" role="group" aria-label="Team ${i + 1} colour">${SWATCHES.map(([n, c]) => `<button style="background:${c}" aria-label="${n}" title="${n}" aria-pressed="${tour.teams[t].color === c}" data-swatch="${t}" data-c="${c}"></button>`).join('')}</div></div>`).join('')}
-    <div class="frow"><label for="t-ptw">Points to win the Cup</label><input type="text" inputmode="decimal" id="t-ptw" data-tf="pointsToWin" value="${tour.pointsToWin}" style="max-width:120px"></div>
+    ${!isTour() ? '' : `<div class="frow"><label for="t-ptw">Points to win the Cup</label><input type="text" inputmode="decimal" id="t-ptw" data-tf="pointsToWin" value="${tour.pointsToWin}" style="max-width:120px"></div>`}
     <div class="frow"><span class="lab">Live leaderboards for players</span>
       <div class="seg" role="group">${[['live', 'Live'], ['hidden', 'Hidden'], ['until', 'Live until']].map(([k, l]) => `<button aria-pressed="${tour.visibility === k}" data-vis="${k}">${l}</button>`).join('')}</div>
       ${tour.visibility === 'until' ? `<input type="time" id="until" value="${tour.until}" aria-label="Hide leaderboards at" style="max-width:140px">` : ''}
@@ -464,8 +503,8 @@ const showPhone = n => (n && n.startsWith('+614') ? `0${n.slice(3, 6)} ${n.slice
 const teamFirst = (a, b) => (!!b.team - !!a.team) || byName(a, b);
 const phoneOf = p => (p.dir && people[p.dir]?.phone) || '';
 function setupPlayers() {
-  const sub = ui.ptab || 'list';
-  const seg = `<div class="pad" style="padding-bottom:0"><div class="seg" role="group" aria-label="Players section">${[['list', 'Players'], ['invites', 'Invites'], ['teams', 'Teams']].map(([k, l]) => `<button aria-pressed="${sub === k}" data-ptab="${k}">${l}</button>`).join('')}</div></div>`;
+  const sub = ui.ptab === 'teams' && !isTour() ? 'list' : ui.ptab || 'list';
+  const seg = `<div class="pad" style="padding-bottom:0"><div class="seg" role="group" aria-label="Players section">${[['list', 'Players'], ['invites', 'Invites'], ...(isTour() ? [['teams', 'Teams']] : [])].map(([k, l]) => `<button aria-pressed="${sub === k}" data-ptab="${k}">${l}</button>`).join('')}</div></div>`;
   return seg + (sub === 'invites' ? setupInvites() : sub === 'teams' ? teamLists() : setupPlayerList());
 }
 function setupPlayerList() {
@@ -475,19 +514,19 @@ function setupPlayerList() {
     <td><select data-pf="team" data-pid="${p.id}" aria-label="Team" class="${p.team ? '' : 'warnsel'}"><option value="">No team</option><option value="t1" ${p.team === 't1' ? 'selected' : ''}>${esc(tName('t1'))}</option><option value="t2" ${p.team === 't2' ? 'selected' : ''}>${esc(tName('t2'))}</option></select></td>
     <td><input type="text" inputmode="numeric" value="${p.hcp}" data-pf="hcp" data-pid="${p.id}" aria-label="Playing handicap" style="width:52px"></td>
     <td><button class="btn sm ghost" data-delp="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></td></tr>
-    ${ui.confirmDel === p.id ? `<tr><td colspan="4"><div class="confirm"><span>Remove <b>${esc(p.name)}</b> from this tour? They will also be taken out of any groups. Scores already entered stay saved, and they stay in your address book.</span><div style="display:flex;gap:8px"><button class="btn danger" data-delyes="${p.id}">Yes, remove</button><button class="btn" data-delno>Cancel</button></div></div></td></tr>` : ''}`;
+    ${ui.confirmDel === p.id ? `<tr><td colspan="4"><div class="confirm"><span>Remove <b>${esc(p.name)}</b> from this event? They will also be taken out of any groups. Scores already entered stay saved, and they stay in your address book.</span><div style="display:flex;gap:8px"><button class="btn danger" data-delyes="${p.id}">Yes, remove</button><button class="btn" data-delno>Cancel</button></div></div></td></tr>` : ''}`;
   const rows = list.map((p, i) => (i === firstNone ? `<tr class="divider"><td colspan="4">No team <span>(${list.length - firstNone}) · not in the Red v Blue Cup unless placed on a side</span></td></tr>` : '') + row(p)).join('');
   const inTour = new Set(tour.players.map(p => p.dir).filter(Boolean));
   const book = Object.entries(people).filter(([id]) => !inTour.has(id)).map(([id, x]) => ({ id, ...x })).sort(byName);
   const q = (ui.bookQ || '').toLowerCase();
-  return `<div class="pad small muted" style="padding-bottom:0">${tour.players.length} players on this tour: ${tour.players.filter(p => p.team === 't1').length} ${esc(tName('t1'))}, ${tour.players.filter(p => p.team === 't2').length} ${esc(tName('t2'))}, ${tour.players.filter(p => !p.team).length} with no team. Handicap is the playing handicap for this tour.</div>
+  return `<div class="pad small muted" style="padding-bottom:0">${tour.players.length} players in this event: ${tour.players.filter(p => p.team === 't1').length} ${esc(tName('t1'))}, ${tour.players.filter(p => p.team === 't2').length} ${esc(tName('t2'))}, ${tour.players.filter(p => !p.team).length} with no team. Handicap is the playing handicap for this event.</div>
     <div style="overflow-x:auto"><table class="lb ed"><thead><tr><th>Name</th><th>Team</th><th>HC</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="form addbox">
       <div class="frow"><span class="lab">Add from your address book</span>
         ${book.length ? `<input type="search" id="bookq" placeholder="Search ${book.length} people" value="${esc(ui.bookQ || '')}">
         <div class="book">${book.map(x => `<label class="bk" ${q && !x.name.toLowerCase().includes(q) ? 'hidden' : ''}><input type="checkbox" data-pick="${x.id}" ${ui.picks?.[x.id] ? 'checked' : ''}><span>${esc(x.name)}</span><span class="muted small">${x.hcp ?? ''}</span></label>`).join('')}</div>
-        <div><button class="btn primary" id="addpicked" ${Object.values(ui.picks || {}).some(Boolean) ? '' : 'disabled'}>Add selected to this tour</button></div>`
-        : '<span class="small muted">Everyone you add is saved to your private address book, so regulars can be added to future tours with a tick.</span>'}</div>
+        <div><button class="btn primary" id="addpicked" ${Object.values(ui.picks || {}).some(Boolean) ? '' : 'disabled'}>Add selected to this event</button></div>`
+        : '<span class="small muted">Everyone you add is saved to your private address book, so regulars can be added to future events with a tick.</span>'}</div>
       <div class="frow"><label for="np">New player</label><div class="newp"><input type="text" id="np" placeholder="Nickname"><input type="tel" id="nphone" placeholder="Mobile (optional)" inputmode="tel"><button class="btn" id="addp">Add</button></div></div>
     </div>`;
 }
@@ -528,7 +567,7 @@ function setupCourses() {
       ${open ? `<div class="det" style="overflow-x:auto"><table class="mini holes"><tr class="hd"><th>Hole</th><th>Par</th><th>Index</th><th>19-36</th><th>37-54</th><th>Match</th></tr>${t.holes.map(h => `<tr><td>${h.number}</td><td>${h.par}</td><td>${h.strokeIndexes[0]}</td><td>${h.strokeIndexes[1] ?? ''}</td><td>${h.strokeIndexes[2] ?? ''}</td><td>${h.matchIndexes[0]}</td></tr>`).join('')}</table></div>` : ''}</div>`;
   }).join('')).join('');
   const err = ui.courseErr ? `<div class="banner" style="margin:0">${esc(ui.courseErr)}</div>` : '';
-  return `<div class="pad small muted" style="padding-bottom:6px">Your course library. Each day picks a course and tee from here.</div>${list}
+  return `<div class="pad small muted" style="padding-bottom:6px">Your course library. Each session picks a course and tee from here.</div>${list}
     <div class="form" style="padding-top:14px;border-top:1px solid var(--rule)"><span class="lab" style="font-weight:700">Add a course and tee</span>
       <div class="frow"><label for="cn">Course</label><input type="text" id="cn" list="courselist" placeholder="e.g. Barnbougle Lost Farm"><datalist id="courselist">${tour.courses.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist></div>
       <div class="frow"><label for="ctn">Tee</label><div style="display:flex;gap:8px;align-items:center"><input type="text" id="ctn" placeholder="e.g. Blue"><select id="ctc" aria-label="Tee colour">${[['Blue', '#2a5fb0'], ['White', '#f4f4f4'], ['Black', '#26292e'], ['Red', '#c8372d'], ['Gold', '#f2b705'], ['Green', '#00843d']].map(([n, c]) => `<option value="${c}">${n}</option>`).join('')}</select></div></div>
@@ -557,15 +596,19 @@ function setupDays() {
     ${open ? `<div class="form">
       <div class="two"><div class="frow"><label>Name</label><input type="text" value="${esc(d.title)}" data-df="title" data-did="${d.id}"></div><div class="frow"><label>Date</label><input type="date" value="${d.date}" data-df="date" data-did="${d.id}"></div></div>
       <div class="frow"><label>Course and tee</label><select data-df="course" data-did="${d.id}"><option value="">Choose…</option>${crsOpts(d)}</select></div>
-      <label class="switch tourmode"><input type="checkbox" data-df="shown" data-did="${d.id}" ${!d.hidden ? 'checked' : ''}> <span>Show this day to players<span class="small muted" style="display:block;font-weight:500">${d.hidden ? 'Hidden: players cannot see this day yet, so you can set it up in advance.' : 'Players can see the order of play, briefing and scores for this day.'}</span></span></label>
-      <label class="switch tourmode"><input type="checkbox" data-df="teamsOn" data-did="${d.id}" ${d.teamsOn !== false ? 'checked' : ''}> <span>Tour mode: <b style="color:var(--t1-text)">${esc(tName('t1'))}</b> v <b style="color:var(--t2-text)">${esc(tName('t2'))}</b><span class="small muted" style="display:block;font-weight:500">Matches are ${esc(tName('t1'))} v ${esc(tName('t2'))} and count towards the Cup. Turn off for a day of mixed groups.</span></span></label>
+      <label class="switch tourmode"><input type="checkbox" data-df="shown" data-did="${d.id}" ${!d.hidden ? 'checked' : ''}> <span>Show this session to players<span class="small muted" style="display:block;font-weight:500">${d.hidden ? 'Hidden: players cannot see this session yet, so you can set it up in advance.' : 'Players can see the order of play, briefing and scores for this session.'}</span></span></label>
+      <div class="frow"><span class="lab">Players can</span><div class="seg" role="group" aria-label="Scoring access">${[['edit', 'View and edit'], ['view', 'View only']].map(([k, l]) => `<button aria-pressed="${(d.mode || 'edit') === k}" data-mode="${k}" data-did="${d.id}">${l}</button>`).join('')}</div>
+        <span class="small muted">${viewOnly(d) ? 'Results are final: players can see but not change scores. Administrators can still edit.' : 'Players enter scores for their own match.'}</span></div>
+      <div class="frow"><span class="lab">Individual scoring</span><div class="seg" role="group" aria-label="Individual scoring">${[['stableford', 'Stableford'], ['both', 'Stableford + Net'], ['net', 'Net only']].map(([k, l]) => `<button aria-pressed="${scoringOf(d) === k}" data-scoring="${k}" data-did="${d.id}">${l}</button>`).join('')}</div></div>
+      ${!isTour() ? '' : `<label class="switch tourmode"><input type="checkbox" data-df="teamsOn" data-did="${d.id}" ${d.teamsOn !== false ? 'checked' : ''}> <span>Tour mode: <b style="color:var(--t1-text)">${esc(tName('t1'))}</b> v <b style="color:var(--t2-text)">${esc(tName('t2'))}</b><span class="small muted" style="display:block;font-weight:500">Matches are ${esc(tName('t1'))} v ${esc(tName('t2'))} and count towards the Cup. Turn off for a session of mixed groups.</span></span></label>`}
       <div class="frow"><label>Briefing</label><textarea rows="3" data-df="briefing" data-did="${d.id}" placeholder="Meeting time, format, nearest the pins…">${esc(d.briefing || '')}</textarea></div>
       <div class="frow"><span class="lab">Groups</span>${check}</div>
       ${d.groups.map((g, i) => groupEditor(d, g, i)).join('')}
       <div><button class="btn" data-addgroup="${d.id}">Add group</button></div></div>` : ''}</div>`;
-  }).join('') + `<div class="pad"><button class="btn primary" id="addday">Add a day</button></div>`;
+  }).join('') + `<div class="pad"><button class="btn primary" id="addday">Add a session</button></div>`;
 }
 function assignmentCheck(d) {
+  if (!isTour()) return noTeamCheck(d);
   const counts = {}; d.groups.forEach(g => groupPlayers(g).forEach(id => (counts[id] = (counts[id] || 0) + 1)));
   const dup = Object.keys(counts).filter(id => counts[id] > 1).map(id => PIDX[id]?.name);
   const left = t => tour.players.filter(p => p.team === t && !counts[p.id]).sort(byName);
@@ -575,9 +618,16 @@ function assignmentCheck(d) {
   const col = (t, ps) => `<div class="tcol tc-${t}"><div class="th"><span>${esc(tName(t))}</span><span class="small">${ps.length} to place</span></div><ol>${ps.map(p => `<li><span>${esc(p.name)}</span><span class="hc">${p.hcp}</span></li>`).join('') || '<li class="muted">All placed</li>'}</ol></div>`;
   return dupHtml + `<div class="unassigned"><div class="small" style="font-weight:600">Not yet in a group</div><div class="tcols">${col('t1', l1)}${col('t2', l2)}</div></div>`;
 }
+function noTeamCheck(d) {
+  const counts = {}; d.groups.forEach(g => groupPlayers(g).forEach(id => (counts[id] = (counts[id] || 0) + 1)));
+  const dup = Object.keys(counts).filter(id => counts[id] > 1).map(id => PIDX[id]?.name);
+  const left = tour.players.filter(p => !counts[p.id]).sort(byName);
+  return (dup.length ? `<div class="banner" style="margin:0">In more than one group: ${dup.map(esc).join(', ')}.</div>` : '') +
+    (left.length ? `<div class="small"><b>Not yet in a group:</b> ${left.map(p => esc(p.name)).join(', ')}</div>` : `<span class="small" style="color:var(--ok);font-weight:600">Every player is in a group.</span>`);
+}
 function groupEditor(d, g, i) {
   const f = FORMATS[g.format]; const used = new Set(d.groups.flatMap(groupPlayers));
-  const tourMode = d.teamsOn !== false && f.match;
+  const tourMode = isTour() && d.teamsOn !== false && f.match;
   const sideTeam = side => (tourMode ? (side === 'a' ? 't1' : 't2') : null);
   const opt = (p, v) => `<option value="${p.id}" ${p.id === v ? 'selected' : ''}>${esc(p.name)} (${p.hcp})${used.has(p.id) && p.id !== v ? ' ✓' : ''}</option>`;
   const grp = (label, ps, v) => (ps.length ? `<optgroup label="${esc(label)}">${ps.map(p => opt(p, v)).join('')}</optgroup>` : '');
@@ -591,11 +641,15 @@ function groupEditor(d, g, i) {
   };
   const sideA = Array.from({ length: f.a }, (_, k) => slot('a', k)).join('');
   const sideB = Array.from({ length: f.b }, (_, k) => slot('b', k)).join('');
+  const sw = ui.swap && ui.swap.gid === g.id && ui.swap.did === d.id ? ui.swap : null;
+  const swapBox = sw ? `<div class="confirm"><span><b>${esc(PIDX[sw.old]?.name)}</b> has ${sw.held} hole${sw.held > 1 ? 's' : ''} entered for this session. ${sw.nv ? `Replace him with <b>${esc(PIDX[sw.nv]?.name)}</b>` : 'Take him out of the group'} anyway? His scores stay saved and come back if you put him back.</span>
+    <div style="display:flex;gap:8px"><button class="btn danger" data-swapyes>${sw.nv ? 'Replace' : 'Take out'}</button><button class="btn" data-swapno>Keep ${esc(PIDX[sw.old]?.name)}</button></div></div>` : '';
   return `<div class="gedit"><div class="ghd"><b>Group ${i + 1}</b><input type="text" value="${esc(g.tee || '')}" data-gf="tee" data-did="${d.id}" data-gid="${g.id}" aria-label="Tee time" placeholder="Tee time" style="width:80px"><button class="btn sm" data-delgroup="${g.id}" data-did="${d.id}" aria-label="Remove group ${i + 1}">Remove</button></div>
     <div class="two"><select data-gf="format" data-did="${d.id}" data-gid="${g.id}" aria-label="Format">${Object.entries(FORMATS).map(([k, v]) => `<option value="${k}" ${k === g.format ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
     ${f.match ? `<div style="display:flex;gap:6px">${g.format !== 'ambroseMatch' ? `<select data-gf="method" data-did="${d.id}" data-gid="${g.id}" aria-label="Handicap method"><option value="front" ${g.method !== 'back' ? 'selected' : ''}>Front of card</option><option value="back" ${g.method === 'back' ? 'selected' : ''}>Back of card</option></select>` : ''}
       <select data-gf="value" data-did="${d.id}" data-gid="${g.id}" aria-label="Points per match"><option value="1" ${g.value === 1 ? 'selected' : ''}>1 pt</option><option value="0.5" ${g.value === 0.5 ? 'selected' : ''}>½ pt</option></select></div>` : '<span></span>'}</div>
     ${tourMode ? (() => { const n = [['a', 't1'], ['b', 't2']].flatMap(([sd, tm]) => g.slots[sd].filter(Boolean).filter(id => PIDX[id] && !PIDX[id].team).map(id => `${esc(PIDX[id].name)} (no team) plays for ${esc(tName(tm))} in this group.`)); return n.length ? `<div class="small" style="color:var(--muted)">${n.join(' ')}</div>` : ''; })() : ''}
+    ${swapBox}
     ${f.match ? `<div class="slots"><div class="${tourMode ? 'side-t1' : ''}">${tourMode ? `<span class="sidelbl" style="color:var(--t1-text)">${esc(tName('t1'))}</span>` : ''}${sideA}</div><span class="v">v</span><div class="${tourMode ? 'side-t2' : ''}">${tourMode ? `<span class="sidelbl" style="color:var(--t2-text)">${esc(tName('t2'))}</span>` : ''}${sideB}</div></div><span class="small muted">${g.format === 'singles' ? 'Top left plays top right; bottom left plays bottom right.' : g.format === 'twoVone' ? 'Both players on the left each play the single player on the right.' : 'Left pair v right pair.'}</span>` : `<div class="slots one">${sideA}</div>`}</div>`;
 }
 
@@ -603,7 +657,7 @@ function groupEditor(d, g, i) {
 function curUnit() { const day = DAY(); const g = day.groups.find(x => x.id === ui.group); return unitsOf(day, g)[ui.unit[day.id + ':' + g.id] || 0]; }
 function openEntry(i) {
   const u = curUnit();
-  if (!canEdit(u)) { toast(locks[u.key] ? 'Scores are locked. Ask an administrator to make a change.' : 'You can only enter scores for your own match.'); return; }
+  if (!canEdit(u)) { toast(viewOnly(u.day) ? 'This session is view only.' : locks[u.key] ? 'Scores are locked. Ask an administrator to make a change.' : 'You can only enter scores for your own match.'); return; }
   ui.entry = { i, draft: Object.fromEntries(u.ents.map(id => [id, sc(id)[i] ?? course.holes[i].par])) };
   renderSheet();
 }
@@ -635,7 +689,7 @@ const errText = e => (e && e.code === 'permission-denied' ? 'You do not have per
 function accessMap(t) {
   const a = {};
   for (const d of t.days) {
-    a[d.id] = {};
+    a[d.id] = d.mode === 'view' ? { __viewonly: 'yes' } : {};
     for (const g of d.groups) {
       [...g.slots.a, ...g.slots.b].filter(Boolean).forEach(id => (a[d.id][id] = g.id));
       if (g.format === 'ambroseMatch') (g.ambIds || [g.id + '-a', g.id + '-b']).forEach(id => (a[d.id][id] = g.id));
@@ -694,7 +748,7 @@ function openTour(id) {
   store(':tour', id);
   gate = { state: 'loading' }; render();
   unsubs.push(fb.watchDoc(`tours/${id}`, (data, meta) => {
-    if (!data) { gate = { state: 'error', msg: 'This tour could not be found, or you do not have access to it.' }; render(); return; }
+    if (!data) { gate = { state: 'error', msg: 'This event could not be found, or you do not have access to it.' }; render(); return; }
     sync.cached = meta.cached;
     // Ignore an incoming copy that is unchanged from the last one seen (keeps local edits that are about to save),
     // or that arrives while a local change is waiting to save.
@@ -753,10 +807,11 @@ async function showMyTours() {
 }
 async function createTour(demo) {
   const id = fb.newId();
-  const base = demo ? clone(SEED.tour) : {
-    title: 'New tour', teams: { t1: { name: 'Red', color: '#c8372d' }, t2: { name: 'Blue', color: '#2a5fb0' } }, pointsToWin: 0, visibility: 'live', until: '12:30',
-    players: [], courses: clone(SEED.tour.courses), days: [{ id: 'd1', title: 'Day 1', date: new Date().toISOString().slice(0, 10), courseId: SEED.tour.courses[0].id, teeId: SEED.tour.courses[0].tees[0].id, teamsOn: true, briefing: '', groups: [] }],
+  const base = demo ? Object.assign(clone(SEED.tour), { title: 'Demo event', isTour: true }) : {
+    title: 'New event', isTour: false, teams: { t1: { name: 'Red', color: '#c8372d' }, t2: { name: 'Blue', color: '#2a5fb0' } }, pointsToWin: 0, visibility: 'live', until: '12:30',
+    players: [], courses: clone(SEED.tour.courses), days: [{ id: 'd1', title: 'Session 1', date: new Date().toISOString().slice(0, 10), courseId: SEED.tour.courses[0].id, teeId: SEED.tour.courses[0].tees[0].id, teamsOn: true, scoring: 'stableford', mode: 'edit', hidden: true, briefing: '', groups: [] }],
   };
+  if (demo) base.days.forEach((d, i) => { d.title = 'Session ' + (i + 1); d.scoring = 'both'; d.mode = 'edit'; });
   base.adminUids = [me.uid];
   base.access = accessMap(base);
   try {
@@ -768,7 +823,7 @@ async function createTour(demo) {
       await fb.batchSet(items);
     }
     location.hash = 't=' + id; openTour(id);
-  } catch (e) { toast('Could not create the tour: ' + errText(e)); }
+  } catch (e) { toast('Could not create the event: ' + errText(e)); }
 }
 
 function renderEmpty() {
@@ -780,14 +835,14 @@ function viewGate() {
   const card = (title, body) => `<section class="card"><h2>${title}</h2><div class="pad" style="padding-top:0;display:grid;gap:12px">${body}</div></section>`;
   if (gate.state === 'loading') return card('Loading…', '<span class="muted">Getting the latest scores.</span>');
   if (gate.state === 'joining') return card('Joining the tour…', '<span class="muted">Signing you in on this phone.</span>');
-  if (gate.state === 'error') return card('Something is not right', `<span>${esc(gate.msg)}</span><div style="display:flex;gap:8px;flex-wrap:wrap">${me && !me.anonymous ? '<button class="btn" data-mytours>My tours</button>' : ''}<button class="btn" data-signout>Sign out</button></div>`);
+  if (gate.state === 'error') return card('Something is not right', `<span>${esc(gate.msg)}</span><div style="display:flex;gap:8px;flex-wrap:wrap">${me && !me.anonymous ? '<button class="btn" data-mytours>My events</button>' : ''}<button class="btn" data-signout>Sign out</button></div>`);
   if (gate.state === 'tours') {
-    const list = gate.tours === null ? '<span class="muted">Loading your tours…</span>' : gate.tours.length ? gate.tours.map(t => `<button class="btn" style="text-align:left" data-opentour="${t.id}"><b>${esc(t.data.title)}</b> <span class="muted small">${t.data.players.length} players · ${t.data.days.length} day${t.data.days.length === 1 ? '' : 's'}</span></button>`).join('') : '<span class="muted">You have no tours yet.</span>';
-    return card('My tours', `<span class="small muted">Signed in as ${esc(me.email || me.name || 'administrator')}.</span>${gate.err ? `<div class="banner">${esc(gate.err)}</div>` : ''}${list}
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-newtour="blank">Create a new tour</button><button class="btn" data-newtour="demo">Create a demo tour</button><button class="btn" data-signout>Sign out</button></div>
-      <span class="small muted">The demo tour has the example players, groups and scores, so you can try everything with real phones.</span>`);
+    const list = gate.tours === null ? '<span class="muted">Loading your events…</span>' : gate.tours.length ? gate.tours.map(t => `<button class="btn" style="text-align:left" data-opentour="${t.id}"><b>${esc(t.data.title)}</b> <span class="muted small">${t.data.players.length} players · ${t.data.days.length} day${t.data.days.length === 1 ? '' : 's'}</span></button>`).join('') : '<span class="muted">You have no events yet.</span>';
+    return card('My events', `<span class="small muted">Signed in as ${esc(me.email || me.name || 'administrator')}.</span>${gate.err ? `<div class="banner">${esc(gate.err)}</div>` : ''}${list}
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-newtour="blank">Create a new event</button><button class="btn" data-newtour="demo">Create a demo event</button><button class="btn" data-signout>Sign out</button></div>
+      <span class="small muted">The demo event is a two-team Tour with example players, groups and scores, so you can try everything with real phones.</span>`);
   }
-  return card('Golf Tour Scorer', `<span>Players: open the personal link your tour administrator sent you. It signs you in on this phone.</span>
+  return card('Golf Tour Scorer', `<span>Players: open the personal link your event administrator sent you. It signs you in on this phone.</span>
     <span class="small muted">Lost your link? Ask the administrator to send it again.</span>
     <div><button class="btn primary" data-gsignin>Administrator sign-in with Google</button></div>`);
 }
@@ -834,11 +889,12 @@ function render() {
   if (ui.tab === 'setup' && !isAdmin()) ui.tab = 'day';
   course = teeOf(DAY());
   applyTeams();
-  document.getElementById('who').innerHTML = `${esc(isAdmin() ? 'Administrator' : PIDX[ui.as]?.name || 'Viewer')}<br>${esc(tour.title)}${syncPill()}`;
+  document.getElementById('who').innerHTML = `<span class="evname">${esc(tour.title)}</span><span class="role">${esc(isAdmin() ? 'Administrator' : PIDX[ui.as]?.name || 'Viewer')}</span>${syncPill()}`;
   const v = document.getElementById('view');
   const previewing = isRealAdmin() && ui.as !== 'admin';
   v.innerHTML = (previewing ? `<div class="banner prev">Previewing as <b>${esc(PIDX[ui.as]?.name || '?')}</b>: this is what they see. <button class="btn sm" data-stoppreview>Stop preview</button></div>` : '') + (syncErr ? `<div class="banner err"><b>Something did not save.</b> ${esc(syncErr)} <button class="btn sm" data-dismiss>OK</button></div>` : '') + (ui.tab === 'day' ? viewDay() : ui.tab === 'scores' ? viewScores() : ui.tab === 'leaders' ? viewLeaders() : ui.tab === 'cup' ? viewCup() : viewSetup());
-  const tabs = [['day', 'Day'], ['scores', 'Scores'], ['leaders', 'Leaders'], ['cup', 'Cup'], ...(isAdmin() ? [['setup', 'Setup']] : [])];
+  if (ui.tab === 'cup' && !isTour()) ui.tab = 'leaders';
+  const tabs = [['day', 'Session'], ['scores', 'Scores'], ['leaders', 'Leaders'], ...(isTour() ? [['cup', 'Cup']] : []), ...(isAdmin() ? [['setup', 'Setup']] : [])];
   const tb = document.getElementById('tabs'); tb.style.gridTemplateColumns = `repeat(${tabs.length}, 1fr)`;
   tb.innerHTML = tabs.map(([k, l]) => `<button data-tab="${k}" ${ui.tab === k ? 'aria-current="page"' : ''}>${ICONS[k]}${l}</button>`).join('');
   measure(); persist(); syncOut();
@@ -892,7 +948,7 @@ document.addEventListener('click', e => {
     } catch (err) { ui.courseErr = err.message; render(); document.getElementById('cpaste').value = txt; document.getElementById('cn').value = cn; document.getElementById('ctn').value = tn; }
   }
   else if (t.id === 'addday') { const last = tour.days[tour.days.length - 1]; const nd = new Date(last.date + 'T00:00'); nd.setDate(nd.getDate() + 1);
-    const day = { id: uid('d'), title: 'Day ' + (tour.days.length + 1), date: nd.toISOString().slice(0, 10), courseId: last.courseId, teeId: last.teeId, teamsOn: true, hidden: true, briefing: '', groups: [] };
+    const day = { id: uid('d'), title: 'Session ' + (tour.days.length + 1), scoring: last.scoring || 'stableford', mode: 'edit', date: nd.toISOString().slice(0, 10), courseId: last.courseId, teeId: last.teeId, teamsOn: true, hidden: true, briefing: '', groups: [] };
     tour.days.push(day); ui.open['day:' + day.id] = true; render(); toast(`${day.title} added. It stays hidden from players until you show it.`); }
   else if (d.addgroup) { const day = dayById(d.addgroup); day.groups.push({ id: uid('g'), tee: '', format: 'fourball', method: 'front', value: 1, slots: { a: [], b: [] } }); render(); }
   else if (d.delgroup) { const day = dayById(d.did); day.groups = day.groups.filter(g => g.id !== d.delgroup); render(); }
@@ -904,6 +960,10 @@ document.addEventListener('click', e => {
     if (invites[pid]) { fb.del(`tours/${tourId}/invites/${invites[pid]}`).catch(() => {}); delete invites[pid]; }
     ui.confirmDel = null; render(); toast(`${nm} removed.`); }
   else if (d.tsort) { ui.teamSort = d.tsort; render(); }
+  else if ('swapyes' in d) { const w = ui.swap; ui.swap = null; if (w) { findGroup(w.did, w.gid).slots[w.side][w.k] = w.nv; } render(); }
+  else if ('swapno' in d) { ui.swap = null; render(); }
+  else if (d.mode && d.did) { dayById(d.did).mode = d.mode; render(); toast(d.mode === 'view' ? 'Session is now view only for players.' : 'Players can enter scores again.'); }
+  else if (d.scoring && d.did) { dayById(d.did).scoring = d.scoring; render(); }
   else if ('dismiss' in d) { syncErr = null; render(); }
   else if ('gsignin' in d) { fb.signInGoogle().then(u => { me = u; showMyTours(); }).catch(err => toast('Sign-in did not complete: ' + errText(err))); }
   else if ('signout' in d) { stopWatching(); tourId = null; tour = null; store(':tour', null); fb.signOut().then(() => { location.hash = ''; gate = { state: 'landing' }; render(); }); }
@@ -920,6 +980,7 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   const t = e.target; const d = t.dataset;
   if (t.id === 'as') { ui.as = t.value; const g = myGroup(); if (g) ui.group = g.id; ui.unit = {}; render(); }
+  else if (t.id === 'istour') { tour.isTour = t.checked; render(); }
   else if (t.id === 'until') { tour.until = t.value || '12:30'; render(); }
   else if (t.id === 'cbt') { ui.cb = t.checked; render(); }
   else if (t.id === 'ack') { const b = document.querySelector('[data-submit]'); if (b) b.disabled = !t.checked; }
@@ -941,7 +1002,10 @@ document.addEventListener('change', e => {
     if (d.gf === 'value') g.value = parseFloat(t.value);
     else if (d.gf === 'format') { g.format = t.value; const f = FORMATS[g.format]; g.slots.a = g.slots.a.slice(0, f.a); g.slots.b = g.slots.b.slice(0, f.b); if (g.format === 'twoVone') g.value = 0.5; if (g.format.startsWith('ambrose') && !g.ambIds) g.ambIds = g.format === 'ambroseMatch' ? [g.id + '-a', g.id + '-b'] : [g.id + '-t']; }
     else g[d.gf] = t.value; render(); }
-  else if (d.slot) { const g = findGroup(d.did, d.gid); const side = d.slot[0], k = +d.slot.slice(1); g.slots[side][k] = t.value || null; render(); }
+  else if (d.slot) { const g = findGroup(d.did, d.gid); const side = d.slot[0], k = +d.slot.slice(1); const old = g.slots[side][k]; const nv = t.value || null;
+    const held = old && old !== nv && !g.format.startsWith('ambrose') ? scFor(d.did, old).filter(v => v !== null).length : 0;
+    if (held) { ui.swap = { did: d.did, gid: d.gid, side, k, old, nv, held }; render(); return; }
+    g.slots[side][k] = nv; render(); }
 });
 document.addEventListener('input', e => {
   if (e.target.id !== 'bookq') return;

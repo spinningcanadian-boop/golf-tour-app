@@ -5,7 +5,7 @@ rules_version = '2';
 // - Administrators (listed in the tour's adminUids) can change anything in their tour.
 // - A player joins by opening their personal invite link, which creates their membership.
 // - Players can enter scores only for people in their own group on that day, and only until
-//   the match is submitted (locked). Once locked, only an administrator can change it.
+//   the match is submitted (locked), and not in a session set to View only. Administrators can always change scores.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -54,6 +54,7 @@ service cloud.firestore {
           && sid == request.resource.data.dayId + '_' + request.resource.data.ent
           && inMyGroup(t, request.resource.data.dayId, request.resource.data.groupId)
           && tourData(t).access[request.resource.data.dayId][request.resource.data.ent] == request.resource.data.groupId
+          && !('__viewonly' in tourData(t).access[request.resource.data.dayId])
           && !exists(/databases/$(database)/documents/tours/$(t)/locks/$(request.resource.data.unitKey))
           && request.resource.data.holes.size() == 18);
       }
