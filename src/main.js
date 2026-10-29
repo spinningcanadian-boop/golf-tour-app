@@ -427,7 +427,7 @@ function viewSetup() {
   const seg = `<div class="seg" role="group" aria-label="Setup section">${tabs.map(([k, l]) => `<button aria-pressed="${ui.setup === k}" data-setup="${k}">${l}</button>`).join('')}</div>`;
   const body = ui.setup === 'tour' ? setupTour() : ui.setup === 'players' ? setupPlayers() : ui.setup === 'courses' ? setupCourses() : setupDays();
   return `<section class="card"><div class="ghead"><div class="eyebrow">Administrator</div><h2>Set-up</h2>${seg}</div>${body}</section>
-    <section class="card"><div class="pad" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between"><span class="small muted">Signed in as ${esc(me.email || 'administrator')}.</span><span style="display:flex;gap:8px"><button class="btn" data-mytours>My tours</button><button class="btn" data-signout>Sign out</button></span></div></section>`;
+    <section class="card"><div class="pad" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between"><span class="small muted">Signed in as ${esc(me.email || 'administrator')}. App version ${esc(window.APP_VERSION || 'dev')}.</span><span style="display:flex;gap:8px"><button class="btn" data-mytours>My tours</button><button class="btn" data-signout>Sign out</button></span></div></section>`;
 }
 function setupTour() {
   return `<div class="form">

@@ -313,7 +313,15 @@ select.warnsel { background: color-mix(in srgb, var(--as) 22%, var(--surface)); 
 <div id="overlay"></div>
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="app.js?v=4e592e14ad"></script>
-<script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');</script>
+<script src="app.js?v=3cfaa3bdec"></script>
+<script>
+window.APP_VERSION = '3cfaa3bdec';
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
+  // When a new version takes over, reload once so the screen shows it.
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded && navigator.serviceWorker.controller) { reloaded = true; location.reload(); } });
+}
+</script>
 </body>
 </html>
