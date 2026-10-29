@@ -1030,7 +1030,7 @@ async function createTour(demo) {
 async function deleteEvent() {
   const id = tourId; const t = tour;
   try {
-    const kids = [...await fb.list(`events/${id}/scores`).then(x => x.map(d => `events/${id}/scores/${d.id}`)), ...await fb.list(`events/${id}/locks`).then(x => x.map(d => `events/${id}/locks/${d.id}`))];
+    const kids = [...await fb.list(`events/${id}/scores`).then(x => x.map(d => `events/${id}/scores/${d.id}`)), ...await fb.list(`events/${id}/locks`).then(x => x.map(d => `events/${id}/locks/${d.id}`)), ...await fb.list(`events/${id}/sides`).then(x => x.map(d => `events/${id}/sides/${d.id}`))];
     for (const pth of kids) await fb.del(pth);
     await fb.del(`events/${id}`);
     for (const pid of t.eventAdmins || []) if (people[pid]) savePerson(pid, { adminOf: (people[pid].adminOf || []).filter(x => x !== id) });
