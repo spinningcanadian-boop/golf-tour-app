@@ -277,7 +277,10 @@ function viewScores() {
   };
   const mid = i => {
     const h = course.holes[i]; const mh = m.holes[i];
-    if (mh.winner === null) return '<td class="c mid"></td>';
+    if (mh.winner === null) {
+      const have = u.ents.filter(id => sc(id)[i] !== null).length;
+      return have ? `<td class="c mid"><span class="wait" title="Waiting for the other scores on this hole">…</span></td>` : '<td class="c mid"></td>';
+    }
     if (m.decidedOn && h.number > m.decidedOn) return '<td class="c mid"><span class="muted">–</span></td>';
     const fin = m.decidedOn === h.number || (m.finished && !m.decidedOn && h.number === 18);
     if (fin) return `<td class="c mid">${m.winner === 'halved' ? chev(0, u.teams, { deep: true, text: 'AS' }) : chev(m.winner === 0 ? 1 : -1, u.teams, { deep: true, text: m.resultText.replace(' and ', '&').replace(' up', ' UP') })}</td>`;
@@ -298,7 +301,11 @@ function viewScores() {
     if (i === 8) rows.push(totRow('OUT', 0, 9));
   }
   rows.push(totRow('IN', 9, 18)); rows.push(totRow('TOT', 0, 18));
-  let summary = isMatch ? `<section class="card"><h2>Match</h2><div class="pad" style="padding-top:0">${mlineHTML(u, m, { big: true })}</div>${submitHTML(u)}</section>` : `<section class="card"><h2>Sign and submit</h2>${submitHTML(u)}</section>`;
+  // Which players are holding up the match: a hole only counts once everyone in the match has a score for it.
+  const gaps = isMatch ? u.ents.map(id => { const miss = []; for (let i = 0; i < 18; i++) if (sc(id)[i] === null && u.ents.some(o => sc(o)[i] !== null)) miss.push(i + 1); return { id, miss }; }).filter(x => x.miss.length) : [];
+  const runs = a => a.reduce((r, n) => { const l = r[r.length - 1]; if (l && n === l[1] + 1) l[1] = n; else r.push([n, n]); return r; }, []).map(([x, y]) => (x === y ? x : `${x}–${y}`)).join(', ');
+  const gapNote = gaps.length ? `<div class="pad small gapnote">Match status shows once every player in the match has a score for the hole. Waiting for: ${gaps.map(x => `<b>${esc(entName(x.id))}</b> (hole${x.miss.length > 1 ? 's' : ''} ${runs(x.miss)})`).join('; ')}.</div>` : '';
+  let summary = isMatch ? `<section class="card"><h2>Match</h2><div class="pad" style="padding-top:0">${mlineHTML(u, m, { big: true })}</div>${gapNote}${submitHTML(u)}</section>` : `<section class="card"><h2>Sign and submit</h2>${submitHTML(u)}</section>`;
   if (u.kind.startsWith('ambrose')) {
     summary += `<section class="card"><h2>Ambrose</h2><table class="lb"><thead><tr><th>Team</th><th class="thru">Thru</th><th class="num">HC</th><th class="num">Gross</th><th class="num">Net</th></tr></thead><tbody>${u.ents.map(id => {
       const a = ambTeam(id); const c = E.ambroseCard(course, { name: a.name, handicaps: a.players.map(p => PIDX[p].hcp), scores: sc(id) }); const t = thruOf(id);
