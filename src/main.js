@@ -37,7 +37,8 @@ function toast(msg) { const t = document.getElementById('toast'); t.textContent 
 const P = () => Object.fromEntries(tour.players.map(p => [p.id, p]));
 let PIDX = {};
 const dayById = id => tour.days.find(d => d.id === id);
-const DAY = () => dayById(ui.day) || tour.days[0];
+const visibleDays = () => (isAdmin() ? tour.days : tour.days.filter(d => !d.hidden));
+const DAY = () => { const v = visibleDays(); return v.find(d => d.id === ui.day) || v[0] || null; };
 const teeOf = day => { const c = tour.courses.find(c => c.id === day.courseId); const t = c && c.tees.find(t => t.id === day.teeId); return c && t ? { name: c.name, tee: t.name, colour: t.colour, holes: t.holes, par: t.holes.reduce((a, h) => a + h.par, 0) } : null; };
 let course = null; // current day's course (set in render)
 const daySc = dayId => (scores[dayId] = scores[dayId] || {});
@@ -79,7 +80,7 @@ function unitsOf(day, g) {
   const teamsOn = day.teamsOn !== false;
   if (g.format === 'ambroseMatch') {
     const [a, b] = ambTeams(g); if (!a.players.length || !b.players.length) return [];
-    return [{ key: key(0), g, day, kind: 'ambroseMatch', sides: [[a.id], [b.id]], teams: teamsOn ? [a.team, b.team] : ['n1', 'n2'], label: `${a.name} v ${b.name}`, value: g.value, ents: [a.id, b.id], teamsOn }];
+    return [{ key: key(0), g, day, kind: 'ambroseMatch', sides: [[a.id], [b.id]], teams: teamsOn ? sideTeams(a.players, b.players) : ['n1', 'n2'], label: `${a.name} v ${b.name}`, value: g.value, ents: [a.id, b.id], teamsOn }];
   }
   if (g.format === 'ambroseStroke') { const [t] = ambTeams(g); return t.players.length ? [{ key: key(0), g, day, kind: 'ambroseStroke', ents: [t.id], label: t.name }] : []; }
   if (g.format === 'individual') return [{ key: key(0), g, day, kind: 'individual', ents: g.slots.a.filter(Boolean), label: 'All players' }];
@@ -88,10 +89,23 @@ function unitsOf(day, g) {
   else if (g.format === 'singles') pairs = [0, 1].map(i => [[g.slots.a[i]].filter(Boolean), [g.slots.b[i]].filter(Boolean)]);
   else pairs = [0, 1].map(i => [[g.slots.a[i]].filter(Boolean), [g.slots.b[0]].filter(Boolean)]);
   return pairs.filter(p => p[0].length && p[1].length).map((sides, i) => {
-    if (teamsOn && PIDX[sides[0][0]].team === 't2' && PIDX[sides[1][0]].team === 't1') sides = [sides[1], sides[0]];   // team 1 on the left
-    return { key: key(i), g, day, kind: 'match', sides, teams: teamsOn ? sides.map(s => PIDX[s[0]].team) : ['n1', 'n2'], value: g.value, ents: [...sides[0], ...sides[1]],
+    let teams = sideTeams(sides[0], sides[1]);
+    if (teamsOn && teams[0] === 't2') { sides = [sides[1], sides[0]]; teams = ['t1', 't2']; }   // team 1 on the left
+    return { key: key(i), g, day, kind: 'match', sides, teams: teamsOn ? teams : ['n1', 'n2'], value: g.value, ents: [...sides[0], ...sides[1]],
       label: sides.map(s => s.map(id => PIDX[id].name).join(' & ')).join(' v '), teamsOn };
   });
+}
+/** Teams for the two sides of a match in tour mode. A side takes the team of its team players;
+ *  a side made only of no-team players (guests) plays for the other team, defaulting to left = team 1. */
+function sideTeams(a, b) {
+  const t = ids => ids.map(id => PIDX[id]?.team).find(Boolean) || null;
+  const other = x => (x === 't1' ? 't2' : 't1');
+  let ta = t(a), tb = t(b);
+  if (ta && tb && ta === tb) { ta = 't1'; tb = 't2'; }
+  if (ta && !tb) tb = other(ta);
+  if (!ta && tb) ta = other(tb);
+  if (!ta && !tb) { ta = 't1'; tb = 't2'; }
+  return [ta, tb];
 }
 const allAmb = () => tour.days.flatMap(d => d.groups.flatMap(ambTeams));
 const ambTeam = id => allAmb().find(a => a.id === id);
@@ -195,8 +209,8 @@ function miniMatch(u, m) {
   return `<table class="mini">${block(0)}${block(9)}</table>`;
 }
 function daySwitch() {
-  if (tour.days.length < 2) return '';
-  return `<div class="chips" role="toolbar" aria-label="Days">${tour.days.map(d => `<button aria-pressed="${d.id === DAY().id}" data-day="${d.id}">${esc(d.title)} · ${fmtDate(d.date)}</button>`).join('')}</div>`;
+  if (visibleDays().length < 2) return '';
+  return `<div class="chips" role="toolbar" aria-label="Days">${visibleDays().map(d => `<button aria-pressed="${d.id === DAY().id}" data-day="${d.id}">${esc(d.title)} · ${fmtDate(d.date)}${d.hidden ? ' · hidden' : ''}</button>`).join('')}</div>`;
 }
 
 /* ---------- Day ---------- */
@@ -318,7 +332,7 @@ const hiddenNote = () => `<section class="card"><div class="pad">Leaderboards ar
 function viewLeaders() {
   if (!canSeeAll()) return hiddenNote();
   const day = DAY();
-  const multi = tour.days.length > 1;
+  const multi = visibleDays().length > 1;
   const scope = multi ? ui.lbScope : 'day';
   const tabs = scope === 'tour' ? [['stab', 'Stableford'], ['gross', 'Gross Stab']] : [['stab', 'Stableford'], ['gross', 'Gross Stab'], ['net', 'Net'], ['amb', 'Ambrose']];
   if (!tabs.find(t => t[0] === ui.lb)) ui.lb = 'stab';
@@ -338,7 +352,7 @@ function viewLeaders() {
   };
   let head = '', body = '', note = '';
   if (scope === 'tour') {
-    const playedDays = tour.days.filter(d => teeOf(d));
+    const playedDays = visibleDays().filter(d => teeOf(d));
     const ids = tour.players.map(p => p.id).filter(id => playedDays.some(d => d.groups.some(g => !g.format.startsWith('ambrose') && groupPlayers(g).includes(id))));
     const roundOf = (id, d) => { const inDay = d.groups.some(g => !g.format.startsWith('ambrose') && groupPlayers(g).includes(id)); if (!inDay) return null; const c = cardOf(id, d); if (!c.holesEntered) return null;
       return ui.lb === 'stab' ? c.points : c.complete ? c.grossStableford : null; };
@@ -383,7 +397,7 @@ function viewLeaders() {
 /* ---------- Cup ---------- */
 function viewCup() {
   if (!canSeeAll()) return hiddenNote();
-  const sessions = tour.days.filter(d => d.teamsOn !== false && teeOf(d)).map(d => {
+  const sessions = visibleDays().filter(d => d.teamsOn !== false && teeOf(d)).map(d => {
     const ms = d.groups.flatMap(g => unitsOf(d, g)).filter(u => (u.kind === 'match' || u.kind === 'ambroseMatch') && u.teams[0] && u.teams[1]).map(u => ({ u, m: matchOf(u) }));
     const tot = [0, 0]; ms.forEach(({ u, m }) => { const s = u.teams[0] === 't1' ? 0 : 1; tot[0] += m.points[s]; tot[1] += m.points[1 - s]; });
     return { d, ms, tot };
@@ -481,10 +495,11 @@ function setupDays() {
   return tour.days.map(d => {
     const open = ui.open['day:' + d.id] ?? d.id === DAY().id;
     const check = assignmentCheck(d);
-    return `<div class="xrow"><button data-open="day:${d.id}" aria-expanded="${!!open}"><span class="pm">${open ? '−' : '+'}</span><span><b>${esc(d.title)}</b> · ${fmtDate(d.date)} <span class="small muted">${d.groups.length} groups</span></span></button>
+    return `<div class="xrow"><button data-open="day:${d.id}" aria-expanded="${!!open}"><span class="pm">${open ? '−' : '+'}</span><span><b>${esc(d.title)}</b> · ${fmtDate(d.date)} <span class="small muted">${d.groups.length} groups</span>${d.hidden ? ' <span class="hid">Hidden</span>' : ''}</span></button>
     ${open ? `<div class="form">
       <div class="two"><div class="frow"><label>Name</label><input type="text" value="${esc(d.title)}" data-df="title" data-did="${d.id}"></div><div class="frow"><label>Date</label><input type="date" value="${d.date}" data-df="date" data-did="${d.id}"></div></div>
       <div class="frow"><label>Course and tee</label><select data-df="course" data-did="${d.id}"><option value="">Choose…</option>${crsOpts(d)}</select></div>
+      <label class="switch tourmode"><input type="checkbox" data-df="shown" data-did="${d.id}" ${!d.hidden ? 'checked' : ''}> <span>Show this day to players<span class="small muted" style="display:block;font-weight:500">${d.hidden ? 'Hidden: players cannot see this day yet, so you can set it up in advance.' : 'Players can see the order of play, briefing and scores for this day.'}</span></span></label>
       <label class="switch tourmode"><input type="checkbox" data-df="teamsOn" data-did="${d.id}" ${d.teamsOn !== false ? 'checked' : ''}> <span>Tour mode: <b style="color:var(--t1-text)">${esc(tName('t1'))}</b> v <b style="color:var(--t2-text)">${esc(tName('t2'))}</b><span class="small muted" style="display:block;font-weight:500">Matches are ${esc(tName('t1'))} v ${esc(tName('t2'))} and count towards the Cup. Turn off for a day of mixed groups.</span></span></label>
       <div class="frow"><label>Briefing</label><textarea rows="3" data-df="briefing" data-did="${d.id}" placeholder="Meeting time, format, nearest the pins…">${esc(d.briefing || '')}</textarea></div>
       <div class="frow"><span class="lab">Groups</span>${check}</div>
@@ -676,6 +691,11 @@ async function createTour(demo) {
   } catch (e) { toast('Could not create the tour: ' + errText(e)); }
 }
 
+function renderEmpty() {
+  document.querySelector('.tabs').hidden = !isRealAdmin();
+  document.getElementById('view').innerHTML = `<section class="card"><h2>${esc(tour.title)}</h2><div class="pad" style="padding-top:0">Nothing has been published yet. Your administrator will share the order of play here.</div></section>`;
+  measure(); persist();
+}
 function viewGate() {
   const card = (title, body) => `<section class="card"><h2>${title}</h2><div class="pad" style="padding-top:0;display:grid;gap:12px">${body}</div></section>`;
   if (gate.state === 'loading') return card('Loading…', '<span class="muted">Getting the latest scores.</span>');
@@ -729,7 +749,8 @@ function render() {
   document.querySelector('.tabs').hidden = false;
   PIDX = P();
   if (!isRealAdmin()) ui.as = myPlayerId || '__none';
-  if (!dayById(ui.day)) ui.day = tour.days[0].id;
+  if (!DAY()) { renderEmpty(); return; }
+  ui.day = DAY().id;
   if (ui.tab === 'setup' && !isAdmin()) ui.tab = 'day';
   course = teeOf(DAY());
   applyTeams();
@@ -781,8 +802,8 @@ document.addEventListener('click', e => {
     } catch (err) { ui.courseErr = err.message; render(); document.getElementById('cpaste').value = txt; document.getElementById('cn').value = cn; document.getElementById('ctn').value = tn; }
   }
   else if (t.id === 'addday') { const last = tour.days[tour.days.length - 1]; const nd = new Date(last.date + 'T00:00'); nd.setDate(nd.getDate() + 1);
-    const day = { id: uid('d'), title: 'Day ' + (tour.days.length + 1), date: nd.toISOString().slice(0, 10), courseId: last.courseId, teeId: last.teeId, teamsOn: true, briefing: '', groups: [] };
-    tour.days.push(day); ui.open['day:' + day.id] = true; render(); toast(`${day.title} added.`); }
+    const day = { id: uid('d'), title: 'Day ' + (tour.days.length + 1), date: nd.toISOString().slice(0, 10), courseId: last.courseId, teeId: last.teeId, teamsOn: true, hidden: true, briefing: '', groups: [] };
+    tour.days.push(day); ui.open['day:' + day.id] = true; render(); toast(`${day.title} added. It stays hidden from players until you show it.`); }
   else if (d.addgroup) { const day = dayById(d.addgroup); day.groups.push({ id: uid('g'), tee: '', format: 'fourball', method: 'front', value: 1, slots: { a: [], b: [] } }); render(); }
   else if (d.delgroup) { const day = dayById(d.did); day.groups = day.groups.filter(g => g.id !== d.delgroup); render(); }
   else if (d.delp) { ui.confirmDel = ui.confirmDel === d.delp ? null : d.delp; render(); }
@@ -817,7 +838,8 @@ document.addEventListener('change', e => {
   else if (d.pf) { const p = tour.players.find(x => x.id === d.pid); if (d.pf === 'hcp') { const n = parseInt(t.value, 10); if (!isNaN(n)) p.hcp = n; } else if (d.pf === 'team') p.team = t.value || null; else p.name = t.value.trim() || p.name; render(); }
   else if (d.df) { const day = dayById(d.did);
     if (d.df === 'course') { const [c, te] = t.value.split('|'); day.courseId = c || null; day.teeId = te || null; }
-    else if (d.df === 'teamsOn') day.teamsOn = t.checked; else day[d.df] = t.value; render(); }
+    else if (d.df === 'teamsOn') day.teamsOn = t.checked;
+    else if (d.df === 'shown') day.hidden = !t.checked; else day[d.df] = t.value; render(); }
   else if (d.gf) { const g = findGroup(d.did, d.gid);
     if (d.gf === 'value') g.value = parseFloat(t.value);
     else if (d.gf === 'format') { g.format = t.value; const f = FORMATS[g.format]; g.slots.a = g.slots.a.slice(0, f.a); g.slots.b = g.slots.b.slice(0, f.b); if (g.format === 'twoVone') g.value = 0.5; if (g.format.startsWith('ambrose') && !g.ambIds) g.ambIds = g.format === 'ambroseMatch' ? [g.id + '-a', g.id + '-b'] : [g.id + '-t']; }

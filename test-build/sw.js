@@ -1,6 +1,6 @@
 // Keeps the app itself available with no signal: serve the saved copy at once, refresh it in the background.
-const CACHE = 'golf-tour-261ecf3c3f';
-const SHELL = ['./', 'index.html', 'app.js?v=261ecf3c3f', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'golf-tour-46efe91589';
+const SHELL = ['./', 'index.html', 'app.js?v=46efe91589', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {

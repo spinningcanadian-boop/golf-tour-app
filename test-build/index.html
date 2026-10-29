@@ -282,6 +282,7 @@ body { margin: 0; }
 .sidelbl { font: 700 12.5px/1.2 var(--f-body); text-transform: uppercase; letter-spacing: .05em; }
 .switch.tourmode { align-items: flex-start; } .switch.tourmode input { margin-top: 2px; }
 .banner.err { background: color-mix(in srgb, var(--dbl) 14%, var(--surface)); border-color: var(--dbl); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.hid { display: inline-block; margin-left: 6px; font: 600 11px/1.6 var(--f-body); padding: 0 7px; border-radius: 999px; background: var(--as-soft); color: var(--as-ink); }
 </style>
 </head>
 <body>
@@ -291,7 +292,7 @@ body { margin: 0; }
 <div id="overlay"></div>
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="app.js?v=261ecf3c3f"></script>
+<script src="app.js?v=46efe91589"></script>
 <script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>
