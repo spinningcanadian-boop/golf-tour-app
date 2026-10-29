@@ -1,0 +1,1188 @@
+{
+ "source": "GolfTour - Tour 15 Sep 26 Working.xlsx (Results + Data, cached values)",
+ "aggregate": [
+  {
+   "rank": 1,
+   "player": "Simon Ford",
+   "cap": 34,
+   "rounds": [
+    26,
+    38,
+    43
+   ],
+   "total": 107
+  },
+  {
+   "rank": 2,
+   "player": "Glen Langford",
+   "cap": 19,
+   "rounds": [
+    31,
+    33,
+    41
+   ],
+   "total": 105
+  },
+  {
+   "rank": 2,
+   "player": "Chris McNeill",
+   "cap": 23,
+   "rounds": [
+    25,
+    34,
+    46
+   ],
+   "total": 105
+  },
+  {
+   "rank": 2,
+   "player": "Tony Whittingham",
+   "cap": 19,
+   "rounds": [
+    30,
+    37,
+    38
+   ],
+   "total": 105
+  },
+  {
+   "rank": 5,
+   "player": "Tiger Crane",
+   "cap": 25,
+   "rounds": [
+    20,
+    40,
+    44
+   ],
+   "total": 104
+  },
+  {
+   "rank": 6,
+   "player": "Brett Saal",
+   "cap": 18,
+   "rounds": [
+    24,
+    35,
+    44
+   ],
+   "total": 103
+  },
+  {
+   "rank": 7,
+   "player": "Scotty O",
+   "cap": 6,
+   "rounds": [
+    31,
+    37,
+    34
+   ],
+   "total": 102
+  },
+  {
+   "rank": 8,
+   "player": "Matty Turner",
+   "cap": 20,
+   "rounds": [
+    29,
+    32,
+    38
+   ],
+   "total": 99
+  },
+  {
+   "rank": 9,
+   "player": "Nic Colys",
+   "cap": 12,
+   "rounds": [
+    24,
+    35,
+    39
+   ],
+   "total": 98
+  },
+  {
+   "rank": 10,
+   "player": "Dave Mayer",
+   "cap": 18,
+   "rounds": [
+    23,
+    35,
+    39
+   ],
+   "total": 97
+  },
+  {
+   "rank": 11,
+   "player": "Shae Bonney",
+   "cap": 10,
+   "rounds": [
+    26,
+    27,
+    43
+   ],
+   "total": 96
+  },
+  {
+   "rank": 11,
+   "player": "Graham Carter",
+   "cap": 8,
+   "rounds": [
+    25,
+    27,
+    44
+   ],
+   "total": 96
+  },
+  {
+   "rank": 13,
+   "player": "Warren O'Brien",
+   "cap": 24,
+   "rounds": [
+    24,
+    35,
+    36
+   ],
+   "total": 95
+  },
+  {
+   "rank": 13,
+   "player": "Larry Nicholas",
+   "cap": 29,
+   "rounds": [
+    19,
+    32,
+    44
+   ],
+   "total": 95
+  },
+  {
+   "rank": 15,
+   "player": "Colin Hallam",
+   "cap": 16,
+   "rounds": [
+    20,
+    35,
+    39
+   ],
+   "total": 94
+  },
+  {
+   "rank": 16,
+   "player": "Peter Thomson",
+   "cap": 36,
+   "rounds": [
+    30,
+    29,
+    34
+   ],
+   "total": 93
+  },
+  {
+   "rank": 17,
+   "player": "Karl Virbickas",
+   "cap": 28,
+   "rounds": [
+    15,
+    34,
+    41
+   ],
+   "total": 90
+  },
+  {
+   "rank": 18,
+   "player": "James Murphy",
+   "cap": 20,
+   "rounds": [
+    21,
+    26,
+    42
+   ],
+   "total": 89
+  },
+  {
+   "rank": 18,
+   "player": "Matt Nugs",
+   "cap": 12,
+   "rounds": [
+    23,
+    30,
+    36
+   ],
+   "total": 89
+  },
+  {
+   "rank": 20,
+   "player": "Bill Drayton",
+   "cap": 23,
+   "rounds": [
+    24,
+    20,
+    43
+   ],
+   "total": 87
+  },
+  {
+   "rank": 21,
+   "player": "Scott Francis",
+   "cap": 34,
+   "rounds": [
+    18,
+    34,
+    34
+   ],
+   "total": 86
+  },
+  {
+   "rank": 21,
+   "player": "Brian Lukins",
+   "cap": 15,
+   "rounds": [
+    28,
+    27,
+    31
+   ],
+   "total": 86
+  },
+  {
+   "rank": 23,
+   "player": "Lord Wazza",
+   "cap": 30,
+   "rounds": [
+    23,
+    22,
+    39
+   ],
+   "total": 84
+  },
+  {
+   "rank": 24,
+   "player": "Gavan Anderson",
+   "cap": 26,
+   "rounds": [
+    18,
+    28,
+    36
+   ],
+   "total": 82
+  },
+  {
+   "rank": 25,
+   "player": "Mitch Beohm",
+   "cap": 5,
+   "rounds": [
+    18,
+    30,
+    23
+   ],
+   "total": 71
+  },
+  {
+   "rank": 26,
+   "player": "Jon Meerkat",
+   "cap": 18,
+   "rounds": [
+    29,
+    null,
+    38
+   ],
+   "total": null
+  },
+  {
+   "rank": 27,
+   "player": "Alan Lancaster",
+   "cap": 25,
+   "rounds": [
+    21,
+    null,
+    37
+   ],
+   "total": null
+  }
+ ],
+ "players": [
+  {
+   "player": "Colin Hallam",
+   "cap": 16,
+   "stab": [
+    20,
+    35,
+    39
+   ],
+   "gross": [
+    105,
+    89,
+    86
+   ],
+   "grossRank": 10
+  },
+  {
+   "player": "Scott Francis",
+   "cap": 34,
+   "stab": [
+    18,
+    34,
+    34
+   ],
+   "gross": [
+    125,
+    108,
+    109
+   ],
+   "grossRank": 25
+  },
+  {
+   "player": "Warren O'Brien",
+   "cap": 24,
+   "stab": [
+    24,
+    35,
+    36
+   ],
+   "gross": [
+    109,
+    97,
+    97
+   ],
+   "grossRank": 17
+  },
+  {
+   "player": "Tiger Crane",
+   "cap": 25,
+   "stab": [
+    20,
+    40,
+    44
+   ],
+   "gross": [
+    114,
+    93,
+    90
+   ],
+   "grossRank": 15
+  },
+  {
+   "player": "Glen Langford",
+   "cap": 19,
+   "stab": [
+    31,
+    33,
+    41
+   ],
+   "gross": [
+    97,
+    94,
+    87
+   ],
+   "grossRank": 8
+  },
+  {
+   "player": "Nic Colys",
+   "cap": 12,
+   "stab": [
+    24,
+    35,
+    39
+   ],
+   "gross": [
+    97,
+    85,
+    82
+   ],
+   "grossRank": 4
+  },
+  {
+   "player": "Bill Drayton",
+   "cap": 23,
+   "stab": [
+    24,
+    20,
+    43
+   ],
+   "gross": [
+    108,
+    111,
+    89
+   ],
+   "grossRank": 18
+  },
+  {
+   "player": "Alan Lancaster",
+   "cap": 25,
+   "stab": [
+    21,
+    null,
+    37
+   ],
+   "gross": [
+    113,
+    null,
+    97
+   ],
+   "grossRank": "#N/A"
+  },
+  {
+   "player": "Chris McNeill",
+   "cap": 23,
+   "stab": [
+    25,
+    34,
+    46
+   ],
+   "gross": [
+    107,
+    97,
+    86
+   ],
+   "grossRank": 14
+  },
+  {
+   "player": "Brett Saal",
+   "cap": 18,
+   "stab": [
+    24,
+    35,
+    44
+   ],
+   "gross": [
+    103,
+    91,
+    83
+   ],
+   "grossRank": 7
+  },
+  {
+   "player": "Karl Virbickas",
+   "cap": 28,
+   "stab": [
+    15,
+    34,
+    41
+   ],
+   "gross": [
+    122,
+    102,
+    96
+   ],
+   "grossRank": 20
+  },
+  {
+   "player": "Lord Wazza",
+   "cap": 30,
+   "stab": [
+    23,
+    22,
+    39
+   ],
+   "gross": [
+    116,
+    116,
+    100
+   ],
+   "grossRank": 23
+  },
+  {
+   "player": "James Murphy",
+   "cap": 20,
+   "stab": [
+    21,
+    26,
+    42
+   ],
+   "gross": [
+    108,
+    102,
+    87
+   ],
+   "grossRank": 15
+  },
+  {
+   "player": "Jon Meerkat",
+   "cap": 18,
+   "stab": [
+    29,
+    null,
+    38
+   ],
+   "gross": [
+    98,
+    null,
+    89
+   ],
+   "grossRank": "#N/A"
+  },
+  {
+   "player": "Gavan Anderson",
+   "cap": 26,
+   "stab": [
+    18,
+    28,
+    36
+   ],
+   "gross": [
+    117,
+    106,
+    99
+   ],
+   "grossRank": 22
+  },
+  {
+   "player": "Tony Whittingham",
+   "cap": 19,
+   "stab": [
+    30,
+    37,
+    38
+   ],
+   "gross": [
+    98,
+    90,
+    90
+   ],
+   "grossRank": 8
+  },
+  {
+   "player": "Dave Mayer",
+   "cap": 18,
+   "stab": [
+    23,
+    35,
+    39
+   ],
+   "gross": [
+    104,
+    91,
+    88
+   ],
+   "grossRank": 11
+  },
+  {
+   "player": "Peter Thomson",
+   "cap": 36,
+   "stab": [
+    30,
+    29,
+    34
+   ],
+   "gross": [
+    115,
+    115,
+    111
+   ],
+   "grossRank": 24
+  },
+  {
+   "player": "Matt Nugs",
+   "cap": 12,
+   "stab": [
+    23,
+    30,
+    36
+   ],
+   "gross": [
+    98,
+    90,
+    85
+   ],
+   "grossRank": 6
+  },
+  {
+   "player": "Mitch Beohm",
+   "cap": 5,
+   "stab": [
+    18,
+    30,
+    23
+   ],
+   "gross": [
+    96,
+    83,
+    91
+   ],
+   "grossRank": 5
+  },
+  {
+   "player": "Simon Ford",
+   "cap": 34,
+   "stab": [
+    26,
+    38,
+    43
+   ],
+   "gross": [
+    117,
+    104,
+    100
+   ],
+   "grossRank": 21
+  },
+  {
+   "player": "Larry Nicholas",
+   "cap": 29,
+   "stab": [
+    19,
+    32,
+    44
+   ],
+   "gross": [
+    119,
+    105,
+    94
+   ],
+   "grossRank": 19
+  },
+  {
+   "player": "Matty Turner",
+   "cap": 20,
+   "stab": [
+    29,
+    32,
+    38
+   ],
+   "gross": [
+    100,
+    96,
+    91
+   ],
+   "grossRank": 13
+  },
+  {
+   "player": "Scotty O",
+   "cap": 6,
+   "stab": [
+    31,
+    37,
+    34
+   ],
+   "gross": [
+    84,
+    77,
+    81
+   ],
+   "grossRank": 1
+  },
+  {
+   "player": "Brian Lukins",
+   "cap": 15,
+   "stab": [
+    28,
+    27,
+    31
+   ],
+   "gross": [
+    96,
+    96,
+    93
+   ],
+   "grossRank": 12
+  },
+  {
+   "player": "Shae Bonney",
+   "cap": 10,
+   "stab": [
+    26,
+    27,
+    43
+   ],
+   "gross": [
+    93,
+    91,
+    76
+   ],
+   "grossRank": 3
+  },
+  {
+   "player": "Graham Carter",
+   "cap": 8,
+   "stab": [
+    25,
+    27,
+    44
+   ],
+   "gross": [
+    92,
+    89,
+    73
+   ],
+   "grossRank": 2
+  },
+  {
+   "player": "Fireballs",
+   "cap": null,
+   "stab": [
+    null,
+    null,
+    null
+   ],
+   "gross": [
+    null,
+    null,
+    null
+   ],
+   "grossRank": null
+  },
+  {
+   "player": "Jon Bons",
+   "cap": null,
+   "stab": [
+    null,
+    null,
+    null
+   ],
+   "gross": [
+    null,
+    null,
+    null
+   ],
+   "grossRank": null
+  }
+ ],
+ "pars": {
+  "AG4": 73,
+  "AH4": 72,
+  "AI4": 73,
+  "S4 LostFarm par": 72,
+  "T4 Dunes par": 71,
+  "S3 scratch": 73,
+  "T3": 72
+ },
+ "ambrose": [
+  {
+   "rank": 1,
+   "team": "Nugs & Matty T",
+   "cap": 8,
+   "gross": 38,
+   "toPar": -6,
+   "net": 30
+  },
+  {
+   "rank": 2,
+   "team": "Brian & Karl",
+   "cap": 10.75,
+   "gross": 41,
+   "toPar": -3,
+   "net": 30.25
+  },
+  {
+   "rank": 3,
+   "team": "Colin & Scott F",
+   "cap": 12.5,
+   "gross": 43,
+   "toPar": -1,
+   "net": 30.5
+  },
+  {
+   "rank": 4,
+   "team": "Tony, Al, Peter",
+   "cap": 13.33,
+   "gross": 46,
+   "toPar": 2,
+   "net": 32.67
+  },
+  {
+   "rank": 5,
+   "team": "Scotty O & Larry",
+   "cap": 8.75,
+   "gross": 42,
+   "toPar": -2,
+   "net": 33.25
+  },
+  {
+   "rank": 6,
+   "team": "Bill & Nic",
+   "cap": 8.75,
+   "gross": 43,
+   "toPar": -1,
+   "net": 34.25
+  },
+  {
+   "rank": 7,
+   "team": "Gavan & Graham",
+   "cap": 8.5,
+   "gross": 43,
+   "toPar": -1,
+   "net": 34.5
+  },
+  {
+   "rank": 8,
+   "team": "Jon & Tiger",
+   "cap": 10.75,
+   "gross": 46,
+   "toPar": 2,
+   "net": 35.25
+  },
+  {
+   "rank": 9,
+   "team": "Brett & James",
+   "cap": 9.5,
+   "gross": 47,
+   "toPar": 3,
+   "net": 37.5
+  },
+  {
+   "rank": 10,
+   "team": "Shae & Waz O",
+   "cap": 8.5,
+   "gross": 46,
+   "toPar": 2,
+   "net": 37.5
+  },
+  {
+   "rank": 11,
+   "team": "Dave & Lord",
+   "cap": 12,
+   "gross": 52,
+   "toPar": 8,
+   "net": 40
+  },
+  {
+   "rank": 12,
+   "team": "Chris & Mitch",
+   "cap": 7,
+   "gross": 49,
+   "toPar": 5,
+   "net": 42
+  }
+ ],
+ "sessions": {
+  "fri": [
+   1.5,
+   5.5
+  ],
+  "sat": [
+   5.5,
+   6.5
+  ],
+  "sun": [
+   6,
+   7
+  ],
+  "total": [
+   13,
+   19
+  ],
+  "toWin": "16.5 Points needed to Win",
+  "matches": {
+   "fri": [
+    {
+     "n": 1,
+     "fb": "Nic & James",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "2 and 1",
+     "jb": "Jon & Shae"
+    },
+    {
+     "n": 2,
+     "fb": "Al & Lord",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "5 and 4",
+     "jb": "Scotty O & Matty T"
+    },
+    {
+     "n": 3,
+     "fb": "Mitch & Colin",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "5 and 4",
+     "jb": "Nugs & Langers"
+    },
+    {
+     "n": 4,
+     "fb": "Brett & Waz O",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "4 and 3",
+     "jb": "Chris & Graham"
+    },
+    {
+     "n": 5,
+     "fb": "Scott F & Larry",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "3 and 1",
+     "jb": "Karl & Simon"
+    },
+    {
+     "n": 6,
+     "fb": "Dave",
+     "fbRes": "1 up",
+     "fbPts": 0.5,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Bill"
+    },
+    {
+     "n": 7,
+     "fb": "Dave",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 0.5,
+     "jbRes": "1 up",
+     "jb": "Brian"
+    },
+    {
+     "n": 8,
+     "fb": "Tiger & Pete",
+     "fbRes": "4 and 3",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Tony & Gavan"
+    }
+   ],
+   "sat": [
+    {
+     "n": 1,
+     "fb": "Nic",
+     "fbRes": "5 and 3",
+     "fbPts": 0.5,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Bill"
+    },
+    {
+     "n": 2,
+     "fb": "Nic",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 0.5,
+     "jbRes": "4 and 2",
+     "jb": "Tony"
+    },
+    {
+     "n": 3,
+     "fb": "Tiger",
+     "fbRes": "8 and 6",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Graham"
+    },
+    {
+     "n": 4,
+     "fb": "Waz O",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "1 up",
+     "jb": "Chris"
+    },
+    {
+     "n": 5,
+     "fb": "Larry",
+     "fbRes": "3 and 2",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Gavan"
+    },
+    {
+     "n": 6,
+     "fb": "Murph",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "3 and 1",
+     "jb": "Glen"
+    },
+    {
+     "n": 7,
+     "fb": "Scott F",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "1 up",
+     "jb": "Simon"
+    },
+    {
+     "n": 8,
+     "fb": "Lord",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "5 and 4",
+     "jb": "Karl"
+    },
+    {
+     "n": 9,
+     "fb": "Mitch",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "2 and 1",
+     "jb": "Scotty O"
+    },
+    {
+     "n": 10,
+     "fb": "Peter",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "2 up",
+     "jb": "Matty T"
+    },
+    {
+     "n": 11,
+     "fb": "Brett",
+     "fbRes": "3 and 2",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Nugs"
+    },
+    {
+     "n": 12,
+     "fb": "Colin",
+     "fbRes": "3 and 1",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Shae"
+    },
+    {
+     "n": 13,
+     "fb": "Dave",
+     "fbRes": "3 and 1",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Brian"
+    }
+   ],
+   "sun": [
+    {
+     "n": 1,
+     "fb": "Nic",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 0.5,
+     "jbRes": "3 and 2",
+     "jb": "Jon"
+    },
+    {
+     "n": 2,
+     "fb": "Nic",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 0.5,
+     "jbRes": "3 and 2",
+     "jb": "Langers"
+    },
+    {
+     "n": 3,
+     "fb": "Al",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "2 and 1",
+     "jb": "Karl"
+    },
+    {
+     "n": 4,
+     "fb": "Dave",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "2 and 1",
+     "jb": "Gavan"
+    },
+    {
+     "n": 5,
+     "fb": "Tiger",
+     "fbRes": "4 and 3",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Shae"
+    },
+    {
+     "n": 6,
+     "fb": "Scott F",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "1 up",
+     "jb": "Nugs"
+    },
+    {
+     "n": 7,
+     "fb": "Murph",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "1 up",
+     "jb": "Chris"
+    },
+    {
+     "n": 8,
+     "fb": "Col",
+     "fbRes": "3 and 2",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Scotty O"
+    },
+    {
+     "n": 9,
+     "fb": "Waz O",
+     "fbRes": "3 and 2",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Brian"
+    },
+    {
+     "n": 10,
+     "fb": "Lord",
+     "fbRes": "3 and 1",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Tony"
+    },
+    {
+     "n": 11,
+     "fb": "Mitch",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "8 and 7",
+     "jb": "Graham"
+    },
+    {
+     "n": 12,
+     "fb": "Peter",
+     "fbRes": null,
+     "fbPts": 0,
+     "jbPts": 1,
+     "jbRes": "1 up",
+     "jb": "Bill"
+    },
+    {
+     "n": 13,
+     "fb": "Brett",
+     "fbRes": "5 and 4",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Matty T"
+    },
+    {
+     "n": 14,
+     "fb": "Larry",
+     "fbRes": "4 and 3",
+     "fbPts": 1,
+     "jbPts": 0,
+     "jbRes": null,
+     "jb": "Simon"
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,537 @@
+{
+ "source": "GolfAppMockups.xlsx (29 Oct evening) / Ambrose sheet, cached values",
+ "course": {
+  "name": "Woolooware GC",
+  "tee": "Blues",
+  "holes": [
+   {
+    "number": 1,
+    "par": 4,
+    "strokeIndexes": [
+     1,
+     19,
+     37
+    ],
+    "matchIndexes": [
+     18,
+     36,
+     54
+    ]
+   },
+   {
+    "number": 2,
+    "par": 4,
+    "strokeIndexes": [
+     3,
+     22,
+     40
+    ],
+    "matchIndexes": [
+     8,
+     26,
+     44
+    ]
+   },
+   {
+    "number": 3,
+    "par": 4,
+    "strokeIndexes": [
+     11,
+     29,
+     47
+    ],
+    "matchIndexes": [
+     12,
+     30,
+     48
+    ]
+   },
+   {
+    "number": 4,
+    "par": 3,
+    "strokeIndexes": [
+     18,
+     35,
+     53
+    ],
+    "matchIndexes": [
+     3,
+     21,
+     39
+    ]
+   },
+   {
+    "number": 5,
+    "par": 4,
+    "strokeIndexes": [
+     9,
+     23,
+     41
+    ],
+    "matchIndexes": [
+     14,
+     32,
+     50
+    ]
+   },
+   {
+    "number": 6,
+    "par": 4,
+    "strokeIndexes": [
+     17,
+     31,
+     49
+    ],
+    "matchIndexes": [
+     6,
+     24,
+     42
+    ]
+   },
+   {
+    "number": 7,
+    "par": 4,
+    "strokeIndexes": [
+     5,
+     27,
+     45
+    ],
+    "matchIndexes": [
+     10,
+     28,
+     46
+    ]
+   },
+   {
+    "number": 8,
+    "par": 5,
+    "strokeIndexes": [
+     7,
+     20,
+     38
+    ],
+    "matchIndexes": [
+     1,
+     19,
+     37
+    ]
+   },
+   {
+    "number": 9,
+    "par": 3,
+    "strokeIndexes": [
+     14,
+     33,
+     51
+    ],
+    "matchIndexes": [
+     16,
+     34,
+     52
+    ]
+   },
+   {
+    "number": 10,
+    "par": 3,
+    "strokeIndexes": [
+     15,
+     36,
+     54
+    ],
+    "matchIndexes": [
+     5,
+     23,
+     41
+    ]
+   },
+   {
+    "number": 11,
+    "par": 4,
+    "strokeIndexes": [
+     12,
+     30,
+     48
+    ],
+    "matchIndexes": [
+     11,
+     29,
+     47
+    ]
+   },
+   {
+    "number": 12,
+    "par": 5,
+    "strokeIndexes": [
+     6,
+     21,
+     39
+    ],
+    "matchIndexes": [
+     2,
+     20,
+     38
+    ]
+   },
+   {
+    "number": 13,
+    "par": 4,
+    "strokeIndexes": [
+     4,
+     25,
+     43
+    ],
+    "matchIndexes": [
+     15,
+     33,
+     51
+    ]
+   },
+   {
+    "number": 14,
+    "par": 5,
+    "strokeIndexes": [
+     13,
+     26,
+     44
+    ],
+    "matchIndexes": [
+     7,
+     25,
+     43
+    ]
+   },
+   {
+    "number": 15,
+    "par": 4,
+    "strokeIndexes": [
+     8,
+     28,
+     46
+    ],
+    "matchIndexes": [
+     13,
+     31,
+     49
+    ]
+   },
+   {
+    "number": 16,
+    "par": 3,
+    "strokeIndexes": [
+     16,
+     34,
+     52
+    ],
+    "matchIndexes": [
+     4,
+     22,
+     40
+    ]
+   },
+   {
+    "number": 17,
+    "par": 3,
+    "strokeIndexes": [
+     10,
+     32,
+     50
+    ],
+    "matchIndexes": [
+     17,
+     35,
+     53
+    ]
+   },
+   {
+    "number": 18,
+    "par": 4,
+    "strokeIndexes": [
+     2,
+     24,
+     42
+    ],
+    "matchIndexes": [
+     9,
+     27,
+     45
+    ]
+   }
+  ]
+ },
+ "teams": [
+  {
+   "name": "Graham & Col",
+   "handicaps": [
+    6,
+    17
+   ],
+   "scores": [
+    4,
+    3,
+    4,
+    3,
+    3,
+    3,
+    5,
+    5,
+    3,
+    3,
+    3,
+    4,
+    5,
+    4,
+    4,
+    2,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "Nic & Glen",
+   "handicaps": [
+    9,
+    25
+   ],
+   "scores": [
+    4,
+    4,
+    4,
+    3,
+    4,
+    4,
+    4,
+    5,
+    3,
+    3,
+    4,
+    5,
+    4,
+    5,
+    4,
+    3,
+    3,
+    4
+   ]
+  }
+ ],
+ "expected": {
+  "teamCaps": [
+   5.75,
+   8.5
+  ],
+  "difference": -2.75,
+  "deemed": [
+   0,
+   3
+  ],
+  "strokes": [
+   [
+    0,
+    1
+   ],
+   [
+    0,
+    1
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    1
+   ]
+  ],
+  "points": [
+   [
+    2,
+    3
+   ],
+   [
+    3,
+    3
+   ],
+   [
+    2,
+    2
+   ],
+   [
+    2,
+    2
+   ],
+   [
+    3,
+    2
+   ],
+   [
+    3,
+    2
+   ],
+   [
+    1,
+    2
+   ],
+   [
+    2,
+    2
+   ],
+   [
+    2,
+    2
+   ],
+   [
+    2,
+    2
+   ],
+   [
+    3,
+    2
+   ],
+   [
+    3,
+    2
+   ],
+   [
+    1,
+    2
+   ],
+   [
+    3,
+    2
+   ],
+   [
+    2,
+    2
+   ],
+   [
+    3,
+    2
+   ],
+   [
+    2,
+    2
+   ],
+   [
+    2,
+    3
+   ]
+  ],
+  "result": [
+   "Team 2",
+   "Halved",
+   "Halved",
+   "Halved",
+   "Team 1",
+   "Team 1",
+   "Team 2",
+   "Halved",
+   "Halved",
+   "Halved",
+   "Team 1",
+   "Team 1",
+   "Team 2",
+   "Team 1",
+   "Halved",
+   "Team 1",
+   "Halved",
+   "Team 2"
+  ],
+  "status": [
+   -1,
+   -1,
+   -1,
+   -1,
+   0,
+   1,
+   0,
+   0,
+   0,
+   0,
+   1,
+   2,
+   1,
+   2,
+   2,
+   3,
+   3,
+   2
+  ],
+  "matchResult": "Team 1 Won 3 and 2",
+  "front9": [
+   33,
+   35
+  ],
+  "back9": [
+   32,
+   35
+  ],
+  "gross": [
+   65,
+   70
+  ],
+  "pickups": [
+   0,
+   0
+  ],
+  "net": [
+   59.25,
+   61.5
+  ]
+ }
+}
