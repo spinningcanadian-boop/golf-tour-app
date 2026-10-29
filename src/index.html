@@ -260,6 +260,28 @@ body { margin: 0; }
 .pill-sync { display: inline-block; margin-top: 3px; font-size: 11px; padding: 2px 7px; border-radius: 999px; background: rgb(255 255 255 / .15); }
 .pill-sync.off { background: var(--as); color: var(--as-ink); }
 .joined { display: inline-block; margin-left: 6px; font-size: 11.5px; font-weight: 600; color: var(--ok); white-space: nowrap; }
+
+.pacts { display: flex; gap: 6px; align-items: center; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+.btn.danger { background: var(--dbl); border-color: var(--dbl); color: #fff; }
+.confirm { display: grid; gap: 8px; padding: 10px; border-radius: 6px; background: color-mix(in srgb, var(--dbl) 12%, var(--surface)); font-size: 13.5px; }
+.teams-panel { border-top: 1px solid var(--rule); padding: 12px 14px 14px; display: grid; gap: 10px; }
+.tp-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.tcols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tcol { border-radius: 8px; overflow: hidden; border: 1px solid var(--rule); min-width: 0; }
+.tcol .th { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 7px 10px; font-weight: 700; color: #fff; }
+.tcol.tc-t1 .th { background: var(--t1); color: var(--t1-ink); } .tcol.tc-t2 .th { background: var(--t2); color: var(--t2-ink); } .tcol.tc-none .th { background: var(--rule-strong); color: var(--ink); }
+.tcol .th .small { font-weight: 500; opacity: .9; }
+.tcol ol { list-style: none; margin: 0; padding: 4px 0; }
+.tcol li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 10px; font-size: 14px; }
+.tcol.tc-t1 li span:first-child { color: var(--t1-text); font-weight: 600; } .tcol.tc-t2 li span:first-child { color: var(--t2-text); font-weight: 600; }
+.tcol li .hc { font: 600 14px/1.3 var(--f-display); color: var(--muted); font-variant-numeric: tabular-nums; }
+.unassigned { display: grid; gap: 8px; }
+.slots .side-t1, .slots .side-t2 { border-radius: 8px; padding: 6px; }
+.slots .side-t1 { background: var(--t1-soft); } .slots .side-t2 { background: var(--t2-soft); }
+.sidelbl { font: 700 12.5px/1.2 var(--f-body); text-transform: uppercase; letter-spacing: .05em; }
+.switch.tourmode { align-items: flex-start; } .switch.tourmode input { margin-top: 2px; }
+.banner.err { background: color-mix(in srgb, var(--dbl) 14%, var(--surface)); border-color: var(--dbl); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 </style>
 </head>
 <body>

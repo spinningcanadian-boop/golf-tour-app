@@ -424,15 +424,29 @@ function setupTour() {
       ${tour.visibility === 'until' ? `<input type="time" id="until" value="${tour.until}" aria-label="Hide leaderboards at" style="max-width:140px">` : ''}
       <span class="small muted">${tour.visibility === 'hidden' ? 'Players see only their own group until you publish.' : tour.visibility === 'until' ? `Players see live leaderboards until ${tour.until}, then only their own group.` : 'Players can follow every group live.'}</span></div></div>`;
 }
+const byName = (a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' });
+const teamStyle = t => (t ? `style="color:var(--${t}-text);font-weight:600;border-left:4px solid var(--${t})"` : '');
 function setupPlayers() {
-  const rows = tour.players.map(p => `<tr><td><input type="text" value="${esc(p.name)}" data-pf="name" data-pid="${p.id}" aria-label="Name"></td>
+  const list = [...tour.players].sort(byName);
+  const rows = list.map(p => `<tr><td><input type="text" value="${esc(p.name)}" data-pf="name" data-pid="${p.id}" aria-label="Name" ${teamStyle(p.team)}></td>
     <td><select data-pf="team" data-pid="${p.id}" aria-label="Team"><option value="">None</option><option value="t1" ${p.team === 't1' ? 'selected' : ''}>${esc(tName('t1'))}</option><option value="t2" ${p.team === 't2' ? 'selected' : ''}>${esc(tName('t2'))}</option></select></td>
     <td><input type="text" inputmode="numeric" value="${p.hcp}" data-pf="hcp" data-pid="${p.id}" aria-label="Playing handicap" style="width:52px"></td>
-    <td><button class="btn sm" data-invite="${p.id}">${invites[p.id] ? 'Link' : 'Invite'}</button>${members[p.id] ? '<span class="joined" title="Signed in">✓ in</span>' : ''}</td></tr>
+    <td><div class="pacts"><button class="btn sm" data-invite="${p.id}">${invites[p.id] ? 'Link' : 'Invite'}</button><button class="btn sm ghost" data-delp="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></div>${members[p.id] ? '<span class="joined" title="Signed in">✓ in</span>' : ''}</td></tr>
+    ${ui.confirmDel === p.id ? `<tr><td colspan="4"><div class="confirm"><span>Remove <b>${esc(p.name)}</b> from the tour? They will also be taken out of any groups. Scores already entered stay saved.</span><div style="display:flex;gap:8px"><button class="btn danger" data-delyes="${p.id}">Yes, remove</button><button class="btn" data-delno>Cancel</button></div></div></td></tr>` : ''}
     ${ui.open['inv:' + p.id] && invites[p.id] ? `<tr><td colspan="4"><div class="invite"><span class="small">Text this link to ${esc(p.name)}. Tapping it signs them in on their phone.</span><code>${esc(inviteUrl(p))}</code><div style="display:flex;gap:8px"><button class="btn sm" data-copy="${p.id}">Copy link</button><button class="btn sm" data-reinvite="${p.id}">New link</button></div></div></td></tr>` : ''}`).join('');
   return `<div class="pad small muted" style="padding-bottom:0">Nicknames are what everyone sees. Handicap is the playing handicap for this tour. ${tour.players.length} players.</div>
     <div style="overflow-x:auto"><table class="lb ed"><thead><tr><th>Name</th><th>Team</th><th>HC</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="form" style="padding-top:12px"><div class="frow"><label for="np">Add a player</label><div style="display:flex;gap:8px"><input type="text" id="np" placeholder="Nickname"><button class="btn" id="addp">Add</button></div></div></div>`;
+    <div class="form" style="padding-top:12px"><div class="frow"><label for="np">Add a player</label><div style="display:flex;gap:8px"><input type="text" id="np" placeholder="Nickname"><button class="btn" id="addp">Add</button></div></div></div>
+    ${teamLists()}`;
+}
+function teamLists() {
+  const sort = ui.teamSort || 'name';
+  const cmp = sort === 'hcp' ? (a, b) => a.hcp - b.hcp || byName(a, b) : byName;
+  const col = t => { const ps = tour.players.filter(p => (p.team || null) === t).sort(cmp); const hcAvg = ps.length ? (ps.reduce((x, p) => x + p.hcp, 0) / ps.length).toFixed(1) : '–';
+    return `<div class="tcol ${t ? 'tc-' + t : 'tc-none'}"><div class="th"><span>${t ? esc(tName(t)) : 'No team'}</span><span class="small">${ps.length} · avg HC ${hcAvg}</span></div><ol>${ps.map(p => `<li><span>${esc(p.name)}</span><span class="hc">${p.hcp}</span></li>`).join('') || '<li class="muted">None yet</li>'}</ol></div>`; };
+  const none = tour.players.some(p => !p.team);
+  return `<div class="teams-panel"><div class="tp-head"><b>Teams</b><div class="seg" role="group" aria-label="Sort teams by">${[['name', 'A–Z'], ['hcp', 'Handicap']].map(([k, l]) => `<button aria-pressed="${sort === k}" data-tsort="${k}">${l}</button>`).join('')}</div></div>
+    <div class="tcols">${col('t1')}${col('t2')}</div>${none ? col(null) : ''}</div>`;
 }
 const inviteUrl = p => `${location.origin}${location.pathname}#t=${tourId}&join=${invites[p.id]}`;
 function setupCourses() {
@@ -471,7 +485,7 @@ function setupDays() {
     ${open ? `<div class="form">
       <div class="two"><div class="frow"><label>Name</label><input type="text" value="${esc(d.title)}" data-df="title" data-did="${d.id}"></div><div class="frow"><label>Date</label><input type="date" value="${d.date}" data-df="date" data-did="${d.id}"></div></div>
       <div class="frow"><label>Course and tee</label><select data-df="course" data-did="${d.id}"><option value="">Choose…</option>${crsOpts(d)}</select></div>
-      <label class="switch"><input type="checkbox" data-df="teamsOn" data-did="${d.id}" ${d.teamsOn !== false ? 'checked' : ''}> Matches count towards the ${esc(tName('t1'))} v ${esc(tName('t2'))} Cup</label>
+      <label class="switch tourmode"><input type="checkbox" data-df="teamsOn" data-did="${d.id}" ${d.teamsOn !== false ? 'checked' : ''}> <span>Tour mode: <b style="color:var(--t1-text)">${esc(tName('t1'))}</b> v <b style="color:var(--t2-text)">${esc(tName('t2'))}</b><span class="small muted" style="display:block;font-weight:500">Matches are ${esc(tName('t1'))} v ${esc(tName('t2'))} and count towards the Cup. Turn off for a day of mixed groups.</span></span></label>
       <div class="frow"><label>Briefing</label><textarea rows="3" data-df="briefing" data-did="${d.id}" placeholder="Meeting time, format, nearest the pins…">${esc(d.briefing || '')}</textarea></div>
       <div class="frow"><span class="lab">Groups</span>${check}</div>
       ${d.groups.map((g, i) => groupEditor(d, g, i)).join('')}
@@ -481,21 +495,34 @@ function setupDays() {
 function assignmentCheck(d) {
   const counts = {}; d.groups.forEach(g => groupPlayers(g).forEach(id => (counts[id] = (counts[id] || 0) + 1)));
   const dup = Object.keys(counts).filter(id => counts[id] > 1).map(id => PIDX[id]?.name);
-  const missing = tour.players.filter(p => !counts[p.id]).map(p => p.name);
-  if (!dup.length && !missing.length) return `<span class="small" style="color:var(--ok);font-weight:600">Every player is in exactly one group.</span>`;
-  return `<div class="banner" style="margin:0">${dup.length ? `In more than one group: ${dup.map(esc).join(', ')}. ` : ''}${missing.length ? `Not in a group: ${missing.map(esc).join(', ')}.` : ''}</div>`;
+  const left = t => tour.players.filter(p => p.team === t && !counts[p.id]).sort(byName);
+  const l1 = left('t1'), l2 = left('t2');
+  const dupHtml = dup.length ? `<div class="banner" style="margin:0">In more than one group: ${dup.map(esc).join(', ')}.</div>` : '';
+  if (!l1.length && !l2.length) return dupHtml + `<span class="small" style="color:var(--ok);font-weight:600">Every ${esc(tName('t1'))} and ${esc(tName('t2'))} player is in a group.</span>`;
+  const col = (t, ps) => `<div class="tcol tc-${t}"><div class="th"><span>${esc(tName(t))}</span><span class="small">${ps.length} to place</span></div><ol>${ps.map(p => `<li><span>${esc(p.name)}</span><span class="hc">${p.hcp}</span></li>`).join('') || '<li class="muted">All placed</li>'}</ol></div>`;
+  return dupHtml + `<div class="unassigned"><div class="small" style="font-weight:600">Not yet in a group</div><div class="tcols">${col('t1', l1)}${col('t2', l2)}</div></div>`;
 }
 function groupEditor(d, g, i) {
   const f = FORMATS[g.format]; const used = new Set(d.groups.flatMap(groupPlayers));
-  const slot = (side, k) => { const v = g.slots[side][k] || '';
-    return `<select data-slot="${side}${k}" data-did="${d.id}" data-gid="${g.id}" aria-label="Player"><option value="">—</option>${tour.players.map(p => `<option value="${p.id}" ${p.id === v ? 'selected' : ''}>${esc(p.name)}${used.has(p.id) && p.id !== v ? ' ✓' : ''}</option>`).join('')}</select>`; };
+  const tourMode = d.teamsOn !== false && f.match;
+  const sideTeam = side => (tourMode ? (side === 'a' ? 't1' : 't2') : null);
+  const opt = (p, v) => `<option value="${p.id}" ${p.id === v ? 'selected' : ''}>${esc(p.name)} (${p.hcp})${used.has(p.id) && p.id !== v ? ' ✓' : ''}</option>`;
+  const grp = (label, ps, v) => (ps.length ? `<optgroup label="${esc(label)}">${ps.map(p => opt(p, v)).join('')}</optgroup>` : '');
+  const slot = (side, k) => {
+    const v = g.slots[side][k] || ''; const t = sideTeam(side); const cur = PIDX[v];
+    const by = team => tour.players.filter(p => (p.team || null) === team).sort(byName);
+    let opts;
+    if (t) { const other = t === 't1' ? 't2' : 't1'; opts = grp(tName(t), by(t), v) + grp('No team', by(null), v) + (cur && cur.team === other ? grp(tName(other) + ' (other team)', [cur], v) : ''); }
+    else opts = grp(tName('t1'), by('t1'), v) + grp(tName('t2'), by('t2'), v) + grp('No team', by(null), v);
+    return `<select data-slot="${side}${k}" data-did="${d.id}" data-gid="${g.id}" aria-label="Player" ${cur ? teamStyle(cur.team) : ''}><option value="">— choose —</option>${opts}</select>`;
+  };
   const sideA = Array.from({ length: f.a }, (_, k) => slot('a', k)).join('');
   const sideB = Array.from({ length: f.b }, (_, k) => slot('b', k)).join('');
   return `<div class="gedit"><div class="ghd"><b>Group ${i + 1}</b><input type="text" value="${esc(g.tee || '')}" data-gf="tee" data-did="${d.id}" data-gid="${g.id}" aria-label="Tee time" placeholder="Tee time" style="width:80px"><button class="btn sm" data-delgroup="${g.id}" data-did="${d.id}" aria-label="Remove group ${i + 1}">Remove</button></div>
     <div class="two"><select data-gf="format" data-did="${d.id}" data-gid="${g.id}" aria-label="Format">${Object.entries(FORMATS).map(([k, v]) => `<option value="${k}" ${k === g.format ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
     ${f.match ? `<div style="display:flex;gap:6px">${g.format !== 'ambroseMatch' ? `<select data-gf="method" data-did="${d.id}" data-gid="${g.id}" aria-label="Handicap method"><option value="front" ${g.method !== 'back' ? 'selected' : ''}>Front of card</option><option value="back" ${g.method === 'back' ? 'selected' : ''}>Back of card</option></select>` : ''}
       <select data-gf="value" data-did="${d.id}" data-gid="${g.id}" aria-label="Points per match"><option value="1" ${g.value === 1 ? 'selected' : ''}>1 pt</option><option value="0.5" ${g.value === 0.5 ? 'selected' : ''}>½ pt</option></select></div>` : '<span></span>'}</div>
-    ${f.match ? `<div class="slots"><div>${sideA}</div><span class="v">v</span><div>${sideB}</div></div><span class="small muted">${g.format === 'singles' ? 'Top left plays top right; bottom left plays bottom right.' : g.format === 'twoVone' ? 'Both players on the left each play the single player on the right.' : 'Left pair v right pair.'}</span>` : `<div class="slots one">${sideA}</div>`}</div>`;
+    ${f.match ? `<div class="slots"><div class="${tourMode ? 'side-t1' : ''}">${tourMode ? `<span class="sidelbl" style="color:var(--t1-text)">${esc(tName('t1'))}</span>` : ''}${sideA}</div><span class="v">v</span><div class="${tourMode ? 'side-t2' : ''}">${tourMode ? `<span class="sidelbl" style="color:var(--t2-text)">${esc(tName('t2'))}</span>` : ''}${sideB}</div></div><span class="small muted">${g.format === 'singles' ? 'Top left plays top right; bottom left plays bottom right.' : g.format === 'twoVone' ? 'Both players on the left each play the single player on the right.' : 'Left pair v right pair.'}</span>` : `<div class="slots one">${sideA}</div>`}</div>`;
 }
 
 /* ---------- entry sheet ---------- */
@@ -549,7 +576,7 @@ function queueTourSave() {
   clearTimeout(tourTimer);
   tourTimer = setTimeout(() => {
     const data = tourForSave(tour); data.access = accessMap(tour);
-    fb.set(`tours/${tourId}`, data).catch(e => toast('Set-up not saved: ' + errText(e)));
+    fb.set(`tours/${tourId}`, data).catch(e => failed('Set-up not saved', e));
   }, 350);
 }
 function unitKeyFor(dayId, ent) {
@@ -566,15 +593,17 @@ function syncOut() {
     if (JSON.stringify(server.scores[dayId]?.[ent]) === JSON.stringify(holes)) continue;
     (server.scores[dayId] = server.scores[dayId] || {})[ent] = clone(holes);
     fb.set(`tours/${tourId}/scores/${dayId}_${ent}`, { dayId, ent, holes, groupId: acc[dayId]?.[ent] || '', unitKey: unitKeyFor(dayId, ent), by: me.uid, at: fb.now() })
-      .catch(e => { toast('Score not saved: ' + errText(e)); });
+      .catch(e => failed('Score not saved', e));
   }
   for (const k of Object.keys(locks)) if (!server.locks[k]) {
     server.locks[k] = locks[k]; const [dayId, groupId] = k.split(':');
-    fb.set(`tours/${tourId}/locks/${k}`, { dayId, groupId, by: me.uid, at: fb.now() }).catch(e => toast('Not submitted: ' + errText(e)));
+    fb.set(`tours/${tourId}/locks/${k}`, { dayId, groupId, by: me.uid, at: fb.now() }).catch(e => failed('Not submitted', e));
   }
   for (const k of Object.keys(server.locks)) if (!locks[k]) { delete server.locks[k]; fb.del(`tours/${tourId}/locks/${k}`).catch(e => toast('Not unlocked: ' + errText(e))); }
 }
 let pendingRender = false;
+let syncErr = null;
+function failed(what, e) { syncErr = `${what}: ${errText(e)}`; toast(syncErr); safeRender(); }
 function safeRender() {
   const a = document.activeElement;
   if (a && a.closest && a.closest('#view') && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && /text|date|time|number/.test(a.type)))) { pendingRender = true; return; }
@@ -706,7 +735,7 @@ function render() {
   applyTeams();
   document.getElementById('who').innerHTML = `${esc(isAdmin() ? 'Administrator' : PIDX[ui.as]?.name || 'Viewer')}<br>${esc(tour.title)}${syncPill()}`;
   const v = document.getElementById('view');
-  v.innerHTML = ui.tab === 'day' ? viewDay() : ui.tab === 'scores' ? viewScores() : ui.tab === 'leaders' ? viewLeaders() : ui.tab === 'cup' ? viewCup() : viewSetup();
+  v.innerHTML = (syncErr ? `<div class="banner err"><b>Something did not save.</b> ${esc(syncErr)} <button class="btn sm" data-dismiss>OK</button></div>` : '') + (ui.tab === 'day' ? viewDay() : ui.tab === 'scores' ? viewScores() : ui.tab === 'leaders' ? viewLeaders() : ui.tab === 'cup' ? viewCup() : viewSetup());
   const tabs = [['day', 'Day'], ['scores', 'Scores'], ['leaders', 'Leaders'], ['cup', 'Cup'], ...(isAdmin() ? [['setup', 'Setup']] : [])];
   const tb = document.getElementById('tabs'); tb.style.gridTemplateColumns = `repeat(${tabs.length}, 1fr)`;
   tb.innerHTML = tabs.map(([k, l]) => `<button data-tab="${k}" ${ui.tab === k ? 'aria-current="page"' : ''}>${ICONS[k]}${l}</button>`).join('');
@@ -756,6 +785,15 @@ document.addEventListener('click', e => {
     tour.days.push(day); ui.open['day:' + day.id] = true; render(); toast(`${day.title} added.`); }
   else if (d.addgroup) { const day = dayById(d.addgroup); day.groups.push({ id: uid('g'), tee: '', format: 'fourball', method: 'front', value: 1, slots: { a: [], b: [] } }); render(); }
   else if (d.delgroup) { const day = dayById(d.did); day.groups = day.groups.filter(g => g.id !== d.delgroup); render(); }
+  else if (d.delp) { ui.confirmDel = ui.confirmDel === d.delp ? null : d.delp; render(); }
+  else if ('delno' in d) { ui.confirmDel = null; render(); }
+  else if (d.delyes) { const pid = d.delyes; const nm = PIDX[pid]?.name;
+    tour.players = tour.players.filter(p => p.id !== pid);
+    tour.days.forEach(day => day.groups.forEach(g => { g.slots.a = g.slots.a.map(x => (x === pid ? null : x)); g.slots.b = g.slots.b.map(x => (x === pid ? null : x)); }));
+    if (invites[pid]) { fb.del(`tours/${tourId}/invites/${invites[pid]}`).catch(() => {}); delete invites[pid]; }
+    ui.confirmDel = null; render(); toast(`${nm} removed.`); }
+  else if (d.tsort) { ui.teamSort = d.tsort; render(); }
+  else if ('dismiss' in d) { syncErr = null; render(); }
   else if ('gsignin' in d) { fb.signInGoogle().then(u => { me = u; showMyTours(); }).catch(err => toast('Sign-in did not complete: ' + errText(err))); }
   else if ('signout' in d) { stopWatching(); tourId = null; tour = null; store(':tour', null); fb.signOut().then(() => { location.hash = ''; gate = { state: 'landing' }; render(); }); }
   else if ('mytours' in d) { stopWatching(); tourId = null; tour = null; store(':tour', null); location.hash = ''; showMyTours(); }
