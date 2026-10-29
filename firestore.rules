@@ -1,0 +1,64 @@
+rules_version = '2';
+
+// Golf Tour App security rules.
+// - Only signed-in people with access to a tour can read it.
+// - Administrators (listed in the tour's adminUids) can change anything in their tour.
+// - A player joins by opening their personal invite link, which creates their membership.
+// - Players can enter scores only for people in their own group on that day, and only until
+//   the match is submitted (locked). Once locked, only an administrator can change it.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function tourPath(t) { return /databases/$(database)/documents/tours/$(t); }
+    function tourData(t) { return get(tourPath(t)).data; }
+    function isAdmin(t) { return signedIn() && request.auth.uid in tourData(t).adminUids; }
+    function memberPath(t) { return /databases/$(database)/documents/tours/$(t)/members/$(request.auth.uid); }
+    function isMember(t) { return signedIn() && exists(memberPath(t)); }
+    function myPlayer(t) { return get(memberPath(t)).data.playerId; }
+    // The administrator's app keeps tour.access[dayId][playerOrTeamId] = groupId up to date.
+    function inMyGroup(t, dayId, groupId) { return tourData(t).access[dayId][myPlayer(t)] == groupId; }
+
+    match /tours/{t} {
+      // Administrators can list their own tours; members can read the tour they belong to.
+      allow list: if signedIn() && request.auth.uid in resource.data.adminUids;
+      allow get: if signedIn() && (request.auth.uid in resource.data.adminUids || isMember(t));
+      // Anyone signed in with Google can start a new tour, with themselves as its administrator.
+      allow create: if signedIn() && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.resource.data.adminUids == [request.auth.uid];
+      allow update, delete: if isAdmin(t);
+
+      match /invites/{token} {
+        // Knowing the token is what lets a player join, so anyone signed in may read one by its token.
+        allow get: if signedIn();
+        allow list, create, update, delete: if isAdmin(t);
+      }
+
+      match /members/{uid} {
+        allow get: if isAdmin(t) || (signedIn() && request.auth.uid == uid);
+        allow list, update, delete: if isAdmin(t);
+        // Joining: a player creates their own membership, matching a real invite.
+        allow create: if isAdmin(t) || (signedIn() && request.auth.uid == uid
+          && get(/databases/$(database)/documents/tours/$(t)/invites/$(request.resource.data.token)).data.playerId == request.resource.data.playerId);
+      }
+
+      match /scores/{sid} {
+        allow read: if isAdmin(t) || isMember(t);
+        allow delete: if isAdmin(t);
+        allow create, update: if isAdmin(t) || (isMember(t)
+          && sid == request.resource.data.dayId + '_' + request.resource.data.ent
+          && inMyGroup(t, request.resource.data.dayId, request.resource.data.groupId)
+          && tourData(t).access[request.resource.data.dayId][request.resource.data.ent] == request.resource.data.groupId
+          && !exists(/databases/$(database)/documents/tours/$(t)/locks/$(request.resource.data.unitKey))
+          && request.resource.data.holes.size() == 18);
+      }
+
+      match /locks/{k} {
+        allow read: if isAdmin(t) || isMember(t);
+        // Players submit (lock) a match in their own group; only administrators unlock.
+        allow create: if isAdmin(t) || (isMember(t) && inMyGroup(t, request.resource.data.dayId, request.resource.data.groupId));
+        allow update, delete: if isAdmin(t);
+      }
+    }
+  }
+}
