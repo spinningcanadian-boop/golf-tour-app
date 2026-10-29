@@ -29,6 +29,7 @@
   function allowed(path, data, del) {
     const s = read();
     const p = path.split("/");
+    if (p[0] === "directory") return !!user && p[1] === user.uid;
     if (p[0] !== "tours") return false;
     const tour2 = s["tours/" + p[1]];
     const admin = tour2 && user && tour2.adminUids.includes(user.uid);
@@ -418,6 +419,8 @@
   var locks = {};
   var invites = {};
   var members = {};
+  var inviteInfo = {};
+  var people = {};
   var myPlayerId = null;
   var gate = { state: "loading" };
   var sync = { pending: false, cached: false };
@@ -927,6 +930,8 @@
   }
   function setupTour() {
     return `<div class="form">
+    <div class="frow prevbox"><label for="as">See the app as a player</label><span class="small muted">Pick a player to check exactly what they will see. A banner lets you switch back.</span>
+      <select id="as"><option value="admin" selected>Choose a player\u2026</option>${[...tour.players].sort(teamFirst).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select></div>
     <div class="frow"><label for="t-title">Tour name</label><input type="text" id="t-title" data-tf="title" value="${esc(tour.title)}"></div>
     ${["t1", "t2"].map((t, i) => `<div class="frow"><label for="tn-${t}">Team ${i + 1}</label><input type="text" id="tn-${t}" value="${esc(tour.teams[t].name)}" data-teamname="${t}">
       <div class="swatches" role="group" aria-label="Team ${i + 1} colour">${SWATCHES.map(([n, c]) => `<button style="background:${c}" aria-label="${n}" title="${n}" aria-pressed="${tour.teams[t].color === c}" data-swatch="${t}" data-c="${c}"></button>`).join("")}</div></div>`).join("")}
@@ -938,18 +943,66 @@
   }
   var byName = (a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" });
   var teamStyle = (t) => t ? `style="color:var(--${t}-text);font-weight:600;border-left:4px solid var(--${t})"` : "";
+  function normPhone(v) {
+    const d = String(v || "").replace(/[^\d+]/g, "");
+    if (/^04\d{8}$/.test(d)) return "+61" + d.slice(1);
+    if (/^\+614\d{8}$/.test(d)) return d;
+    if (/^614\d{8}$/.test(d)) return "+" + d;
+    if (/^\+\d{8,15}$/.test(d) && !d.startsWith("+61")) return d;
+    return null;
+  }
+  var showPhone = (n) => n && n.startsWith("+614") ? `0${n.slice(3, 6)} ${n.slice(6, 9)} ${n.slice(9)}` : n || "";
+  var teamFirst = (a, b) => !!b.team - !!a.team || byName(a, b);
+  var phoneOf = (p) => p.dir && people[p.dir]?.phone || "";
   function setupPlayers() {
-    const list = [...tour.players].sort(byName);
-    const rows = list.map((p) => `<tr><td><input type="text" value="${esc(p.name)}" data-pf="name" data-pid="${p.id}" aria-label="Name" ${teamStyle(p.team)}></td>
-    <td><select data-pf="team" data-pid="${p.id}" aria-label="Team"><option value="">None</option><option value="t1" ${p.team === "t1" ? "selected" : ""}>${esc(tName("t1"))}</option><option value="t2" ${p.team === "t2" ? "selected" : ""}>${esc(tName("t2"))}</option></select></td>
+    const sub = ui.ptab || "list";
+    const seg = `<div class="pad" style="padding-bottom:0"><div class="seg" role="group" aria-label="Players section">${[["list", "Players"], ["invites", "Invites"], ["teams", "Teams"]].map(([k, l]) => `<button aria-pressed="${sub === k}" data-ptab="${k}">${l}</button>`).join("")}</div></div>`;
+    return seg + (sub === "invites" ? setupInvites() : sub === "teams" ? teamLists() : setupPlayerList());
+  }
+  function setupPlayerList() {
+    const list = [...tour.players].sort(teamFirst);
+    const firstNone = list.findIndex((p) => !p.team);
+    const row = (p) => `<tr class="${p.team ? "" : "noteam"}"><td><input type="text" value="${esc(p.name)}" data-pf="name" data-pid="${p.id}" aria-label="Name" ${teamStyle(p.team)}></td>
+    <td><select data-pf="team" data-pid="${p.id}" aria-label="Team" class="${p.team ? "" : "warnsel"}"><option value="">No team</option><option value="t1" ${p.team === "t1" ? "selected" : ""}>${esc(tName("t1"))}</option><option value="t2" ${p.team === "t2" ? "selected" : ""}>${esc(tName("t2"))}</option></select></td>
     <td><input type="text" inputmode="numeric" value="${p.hcp}" data-pf="hcp" data-pid="${p.id}" aria-label="Playing handicap" style="width:52px"></td>
-    <td><div class="pacts"><button class="btn sm" data-invite="${p.id}">${invites[p.id] ? "Link" : "Invite"}</button><button class="btn sm ghost" data-delp="${p.id}" aria-label="Remove ${esc(p.name)}">\u2715</button></div>${members[p.id] ? '<span class="joined" title="Signed in">\u2713 in</span>' : ""}</td></tr>
-    ${ui.confirmDel === p.id ? `<tr><td colspan="4"><div class="confirm"><span>Remove <b>${esc(p.name)}</b> from the tour? They will also be taken out of any groups. Scores already entered stay saved.</span><div style="display:flex;gap:8px"><button class="btn danger" data-delyes="${p.id}">Yes, remove</button><button class="btn" data-delno>Cancel</button></div></div></td></tr>` : ""}
-    ${ui.open["inv:" + p.id] && invites[p.id] ? `<tr><td colspan="4"><div class="invite"><span class="small">Text this link to ${esc(p.name)}. Tapping it signs them in on their phone.</span><code>${esc(inviteUrl(p))}</code><div style="display:flex;gap:8px"><button class="btn sm" data-copy="${p.id}">Copy link</button><button class="btn sm" data-reinvite="${p.id}">New link</button></div></div></td></tr>` : ""}`).join("");
-    return `<div class="pad small muted" style="padding-bottom:0">Nicknames are what everyone sees. Handicap is the playing handicap for this tour. ${tour.players.length} players.</div>
+    <td><button class="btn sm ghost" data-delp="${p.id}" aria-label="Remove ${esc(p.name)}">\u2715</button></td></tr>
+    ${ui.confirmDel === p.id ? `<tr><td colspan="4"><div class="confirm"><span>Remove <b>${esc(p.name)}</b> from this tour? They will also be taken out of any groups. Scores already entered stay saved, and they stay in your address book.</span><div style="display:flex;gap:8px"><button class="btn danger" data-delyes="${p.id}">Yes, remove</button><button class="btn" data-delno>Cancel</button></div></div></td></tr>` : ""}`;
+    const rows = list.map((p, i) => (i === firstNone ? `<tr class="divider"><td colspan="4">No team <span>(${list.length - firstNone}) \xB7 not in the Red v Blue Cup unless placed on a side</span></td></tr>` : "") + row(p)).join("");
+    const inTour = new Set(tour.players.map((p) => p.dir).filter(Boolean));
+    const book = Object.entries(people).filter(([id]) => !inTour.has(id)).map(([id, x]) => ({ id, ...x })).sort(byName);
+    const q = (ui.bookQ || "").toLowerCase();
+    return `<div class="pad small muted" style="padding-bottom:0">${tour.players.length} players on this tour: ${tour.players.filter((p) => p.team === "t1").length} ${esc(tName("t1"))}, ${tour.players.filter((p) => p.team === "t2").length} ${esc(tName("t2"))}, ${tour.players.filter((p) => !p.team).length} with no team. Handicap is the playing handicap for this tour.</div>
     <div style="overflow-x:auto"><table class="lb ed"><thead><tr><th>Name</th><th>Team</th><th>HC</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="form" style="padding-top:12px"><div class="frow"><label for="np">Add a player</label><div style="display:flex;gap:8px"><input type="text" id="np" placeholder="Nickname"><button class="btn" id="addp">Add</button></div></div></div>
-    ${teamLists()}`;
+    <div class="form addbox">
+      <div class="frow"><span class="lab">Add from your address book</span>
+        ${book.length ? `<input type="search" id="bookq" placeholder="Search ${book.length} people" value="${esc(ui.bookQ || "")}">
+        <div class="book">${book.map((x) => `<label class="bk" ${q && !x.name.toLowerCase().includes(q) ? "hidden" : ""}><input type="checkbox" data-pick="${x.id}" ${ui.picks?.[x.id] ? "checked" : ""}><span>${esc(x.name)}</span><span class="muted small">${x.hcp ?? ""}</span></label>`).join("")}</div>
+        <div><button class="btn primary" id="addpicked" ${Object.values(ui.picks || {}).some(Boolean) ? "" : "disabled"}>Add selected to this tour</button></div>` : '<span class="small muted">Everyone you add is saved to your private address book, so regulars can be added to future tours with a tick.</span>'}</div>
+      <div class="frow"><label for="np">New player</label><div class="newp"><input type="text" id="np" placeholder="Nickname"><input type="tel" id="nphone" placeholder="Mobile (optional)" inputmode="tel"><button class="btn" id="addp">Add</button></div></div>
+    </div>`;
+  }
+  function inviteText(p) {
+    return `Hi ${p.name}, here is your link to ${tour.title} scoring. Tap it to sign in on your phone (keep this text in case you need it again): ${inviteUrl(p)}`;
+  }
+  var smsSep = () => /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) ? "&" : "?";
+  function setupInvites() {
+    const list = [...tour.players].sort(teamFirst);
+    const sent = list.filter((p) => inviteInfo[p.id]?.sentAt).length, joined = list.filter((p) => members[p.id]).length;
+    const missing = list.filter((p) => !invites[p.id]).length;
+    const rows = list.map((p) => {
+      const raw = ui.phoneDraft?.[p.id] ?? showPhone(phoneOf(p));
+      const norm = normPhone(raw);
+      const bad = raw && !norm;
+      const status = members[p.id] ? '<span class="st ok">Signed in</span>' : inviteInfo[p.id]?.sentAt ? '<span class="st sent">Texted</span>' : '<span class="st">Not sent</span>';
+      const can = norm && invites[p.id];
+      return `<div class="invrow"><div class="nm" ${p.team ? `style="color:var(--${p.team}-text)"` : ""}>${esc(p.name)} ${status}</div>
+      <input type="tel" inputmode="tel" value="${esc(raw)}" placeholder="Mobile number" data-phone="${p.id}" aria-label="Mobile for ${esc(p.name)}" class="${bad ? "bad" : ""}">
+      <div class="ia">${can ? `<a class="btn sm primary" href="sms:${norm}${smsSep()}body=${encodeURIComponent(inviteText(p))}" data-sent="${p.id}">Text link</a>` : `<button class="btn sm" disabled>Text link</button>`}<button class="btn sm" data-copy="${p.id}" ${invites[p.id] ? "" : "disabled"}>Copy</button></div>
+      ${bad ? '<div class="small err-t">Check this number: an Australian mobile looks like 0412 345 678.</div>' : ""}</div>`;
+    }).join("");
+    return `<div class="pad" style="display:grid;gap:6px;padding-bottom:4px"><span><b>${sent}</b> of ${list.length} texted \xB7 <b>${joined}</b> signed in</span>
+    <span class="small muted">Text link opens your Messages app with the number and the player's own link filled in: just press send. Numbers are saved to your private address book, never shown to players.${missing ? " Making links\u2026" : ""}</span></div>
+    <div class="invlist">${rows}</div>`;
   }
   function teamLists() {
     const sort = ui.teamSort || "name";
@@ -1056,6 +1109,10 @@
     <div class="two"><select data-gf="format" data-did="${d.id}" data-gid="${g.id}" aria-label="Format">${Object.entries(FORMATS).map(([k, v]) => `<option value="${k}" ${k === g.format ? "selected" : ""}>${v.label}</option>`).join("")}</select>
     ${f.match ? `<div style="display:flex;gap:6px">${g.format !== "ambroseMatch" ? `<select data-gf="method" data-did="${d.id}" data-gid="${g.id}" aria-label="Handicap method"><option value="front" ${g.method !== "back" ? "selected" : ""}>Front of card</option><option value="back" ${g.method === "back" ? "selected" : ""}>Back of card</option></select>` : ""}
       <select data-gf="value" data-did="${d.id}" data-gid="${g.id}" aria-label="Points per match"><option value="1" ${g.value === 1 ? "selected" : ""}>1 pt</option><option value="0.5" ${g.value === 0.5 ? "selected" : ""}>\xBD pt</option></select></div>` : "<span></span>"}</div>
+    ${tourMode ? (() => {
+      const n = [["a", "t1"], ["b", "t2"]].flatMap(([sd, tm]) => g.slots[sd].filter(Boolean).filter((id) => PIDX[id] && !PIDX[id].team).map((id) => `${esc(PIDX[id].name)} (no team) plays for ${esc(tName(tm))} in this group.`));
+      return n.length ? `<div class="small" style="color:var(--muted)">${n.join(" ")}</div>` : "";
+    })() : ""}
     ${f.match ? `<div class="slots"><div class="${tourMode ? "side-t1" : ""}">${tourMode ? `<span class="sidelbl" style="color:var(--t1-text)">${esc(tName("t1"))}</span>` : ""}${sideA}</div><span class="v">v</span><div class="${tourMode ? "side-t2" : ""}">${tourMode ? `<span class="sidelbl" style="color:var(--t2-text)">${esc(tName("t2"))}</span>` : ""}${sideB}</div></div><span class="small muted">${g.format === "singles" ? "Top left plays top right; bottom left plays bottom right." : g.format === "twoVone" ? "Both players on the left each play the single player on the right." : "Left pair v right pair."}</span>` : `<div class="slots one">${sideA}</div>`}</div>`;
   }
   function curUnit() {
@@ -1119,9 +1176,12 @@
     return c;
   };
   var tourTimer = null;
+  var tourDirty = false;
   function queueTourSave() {
     clearTimeout(tourTimer);
+    tourDirty = true;
     tourTimer = setTimeout(() => {
+      tourDirty = false;
       const data = tourForSave(tour);
       data.access = accessMap(tour);
       fb.set(`tours/${tourId}`, data).catch((e) => failed("Set-up not saved", e));
@@ -1203,9 +1263,17 @@
         render();
         return;
       }
+      sync.cached = meta.cached;
+      const same = server.tour && JSON.stringify(tourForSave(data)) === JSON.stringify(tourForSave(server.tour));
+      if (tourDirty || same && tour) {
+        if (gate.state !== "ready") {
+          gate = { state: "ready" };
+          safeRender();
+        }
+        return;
+      }
       tour = data;
       server.tour = clone(data);
-      sync.cached = meta.cached;
       if (isRealAdmin() && !unsubs.adminWatch) startAdminWatch();
       gate = { state: "ready" };
       safeRender();
@@ -1232,12 +1300,40 @@
     }, () => {
     }));
   }
+  var making = /* @__PURE__ */ new Set();
+  function ensureInvites() {
+    for (const p of tour.players) if (!invites[p.id] && !making.has(p.id)) {
+      making.add(p.id);
+      const tk = token();
+      fb.set(`tours/${tourId}/invites/${tk}`, { playerId: p.id, at: fb.now() }).catch((e) => failed("Invite link not made", e)).finally(() => making.delete(p.id));
+    }
+  }
+  function savePerson(p, patch) {
+    if (!p.dir) {
+      p.dir = fb.newId();
+    }
+    const cur = people[p.dir] || { name: p.name, hcp: p.hcp, phone: "" };
+    const next = { ...cur, ...patch };
+    people[p.dir] = next;
+    fb.set(`directory/${me.uid}/people/${p.dir}`, next).catch((e) => failed("Address book not saved", e));
+  }
   function startAdminWatch() {
     unsubs.adminWatch = true;
     unsubs.push(fb.watchColl(`tours/${tourId}/invites`, (docs) => {
-      const m = {};
-      docs.forEach(({ id: t, data }) => m[data.playerId] = t);
+      const m = {}, info = {};
+      docs.forEach(({ id: t, data }) => {
+        m[data.playerId] = t;
+        info[data.playerId] = { token: t, sentAt: data.sentAt || null };
+      });
       invites = m;
+      inviteInfo = info;
+      if (tour) safeRender();
+    }, () => {
+    }));
+    unsubs.push(fb.watchColl(`directory/${me.uid}/people`, (docs) => {
+      const m = {};
+      docs.forEach(({ id, data }) => m[id] = data);
+      people = m;
       if (tour) safeRender();
     }, () => {
     }));
@@ -1400,7 +1496,8 @@
     applyTeams();
     document.getElementById("who").innerHTML = `${esc(isAdmin() ? "Administrator" : PIDX[ui.as]?.name || "Viewer")}<br>${esc(tour.title)}${syncPill()}`;
     const v = document.getElementById("view");
-    v.innerHTML = (syncErr ? `<div class="banner err"><b>Something did not save.</b> ${esc(syncErr)} <button class="btn sm" data-dismiss>OK</button></div>` : "") + (ui.tab === "day" ? viewDay() : ui.tab === "scores" ? viewScores() : ui.tab === "leaders" ? viewLeaders() : ui.tab === "cup" ? viewCup() : viewSetup());
+    const previewing = isRealAdmin() && ui.as !== "admin";
+    v.innerHTML = (previewing ? `<div class="banner prev">Previewing as <b>${esc(PIDX[ui.as]?.name || "?")}</b>: this is what they see. <button class="btn sm" data-stoppreview>Stop preview</button></div>` : "") + (syncErr ? `<div class="banner err"><b>Something did not save.</b> ${esc(syncErr)} <button class="btn sm" data-dismiss>OK</button></div>` : "") + (ui.tab === "day" ? viewDay() : ui.tab === "scores" ? viewScores() : ui.tab === "leaders" ? viewLeaders() : ui.tab === "cup" ? viewCup() : viewSetup());
     const tabs = [["day", "Day"], ["scores", "Scores"], ["leaders", "Leaders"], ["cup", "Cup"], ...isAdmin() ? [["setup", "Setup"]] : []];
     const tb = document.getElementById("tabs");
     tb.style.gridTemplateColumns = `repeat(${tabs.length}, 1fr)`;
@@ -1408,12 +1505,20 @@
     measure();
     persist();
     syncOut();
+    if (isRealAdmin() && ui.tab === "setup" && ui.setup === "players" && ui.ptab === "invites") ensureInvites();
   }
   function findGroup(did, gid) {
     return dayById(did).groups.find((g) => g.id === gid);
   }
   window.addEventListener("resize", measure);
   document.addEventListener("click", (e) => {
+    const sentA = e.target.closest("a[data-sent]");
+    if (sentA) {
+      const pid = sentA.dataset.sent;
+      const tk = invites[pid];
+      if (tk) fb.set(`tours/${tourId}/invites/${tk}`, { playerId: pid, at: fb.now(), sentAt: fb.now() }).catch((err) => failed("Not marked as sent", err));
+      return;
+    }
     const t = e.target.closest("button, tr.hrow, tr.tap, [data-cancel]");
     if (!t) return;
     const d = t.dataset;
@@ -1500,9 +1605,31 @@
     } else if (t.id === "addp") {
       const n = document.getElementById("np").value.trim();
       if (!n) return;
-      tour.players.push({ id: uid("p"), name: n, team: null, hcp: 18 });
+      const ph = document.getElementById("nphone").value;
+      if (ph && !normPhone(ph)) {
+        toast("Check the mobile number: it should look like 0412 345 678.");
+        return;
+      }
+      const p = { id: uid("p"), name: n, team: null, hcp: 18 };
+      tour.players.push(p);
+      savePerson(p, { name: n, hcp: 18, phone: normPhone(ph) || "" });
       render();
       toast(`${n} added. Set their team and handicap.`);
+    } else if (t.id === "addpicked") {
+      const ids = Object.keys(ui.picks || {}).filter((k) => ui.picks[k]);
+      ids.forEach((id) => {
+        const x = people[id];
+        if (x) tour.players.push({ id: uid("p"), name: x.name, team: null, hcp: x.hcp ?? 18, dir: id });
+      });
+      ui.picks = {};
+      render();
+      toast(`${ids.length} added. Set their teams and handicaps.`);
+    } else if (d.ptab) {
+      ui.ptab = d.ptab;
+      render();
+    } else if (d.stoppreview !== void 0) {
+      ui.as = "admin";
+      render();
     } else if (t.id === "addc") {
       const cn = document.getElementById("cn").value.trim(), tn = document.getElementById("ctn").value.trim(), col = document.getElementById("ctc").value, txt = document.getElementById("cpaste").value;
       try {
@@ -1650,13 +1777,35 @@
         if (!isNaN(n)) tour.pointsToWin = n;
       } else tour[d.tf] = t.value;
       render();
+    } else if (d.phone) {
+      const p = tour.players.find((x) => x.id === d.phone);
+      const n = normPhone(t.value);
+      ui.phoneDraft = ui.phoneDraft || {};
+      if (!t.value.trim()) {
+        delete ui.phoneDraft[p.id];
+        savePerson(p, { phone: "" });
+      } else if (n) {
+        delete ui.phoneDraft[p.id];
+        savePerson(p, { phone: n, name: p.name });
+      } else ui.phoneDraft[p.id] = t.value;
+      render();
+    } else if (d.pick) {
+      ui.picks = ui.picks || {};
+      ui.picks[d.pick] = t.checked;
+      render();
     } else if (d.pf) {
       const p = tour.players.find((x) => x.id === d.pid);
       if (d.pf === "hcp") {
         const n = parseInt(t.value, 10);
-        if (!isNaN(n)) p.hcp = n;
+        if (!isNaN(n)) {
+          p.hcp = n;
+          if (p.dir) savePerson(p, { hcp: n });
+        }
       } else if (d.pf === "team") p.team = t.value || null;
-      else p.name = t.value.trim() || p.name;
+      else {
+        p.name = t.value.trim() || p.name;
+        if (p.dir) savePerson(p, { name: p.name });
+      }
       render();
     } else if (d.df) {
       const day = dayById(d.did);
@@ -1686,6 +1835,12 @@
       g.slots[side][k] = t.value || null;
       render();
     }
+  });
+  document.addEventListener("input", (e) => {
+    if (e.target.id !== "bookq") return;
+    ui.bookQ = e.target.value;
+    const q = ui.bookQ.toLowerCase();
+    document.querySelectorAll(".book .bk").forEach((l) => l.hidden = q && !l.textContent.toLowerCase().includes(q));
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && ui.entry) {

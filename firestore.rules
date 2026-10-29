@@ -19,6 +19,11 @@ service cloud.firestore {
     // The administrator's app keeps tour.access[dayId][playerOrTeamId] = groupId up to date.
     function inMyGroup(t, dayId, groupId) { return tourData(t).access[dayId][myPlayer(t)] == groupId; }
 
+    // Each administrator's private address book (names, mobiles, usual handicap). Only they can see it.
+    match /directory/{uid}/people/{pid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
     match /tours/{t} {
       // Administrators can list their own tours; members can read the tour they belong to.
       allow list: if signedIn() && request.auth.uid in resource.data.adminUids;

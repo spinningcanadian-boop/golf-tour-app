@@ -13,6 +13,7 @@ const children = (s, path) => { const n = path.split('/').length; return Object.
 // Very small rule check so tests catch obvious permission mistakes: the same intent as firestore.rules.
 function allowed(path, data, del) {
   const s = read(); const p = path.split('/');
+  if (p[0] === 'directory') return !!user && p[1] === user.uid;
   if (p[0] !== 'tours') return false;
   const tour = s['tours/' + p[1]];
   const admin = tour && user && tour.adminUids.includes(user.uid);
