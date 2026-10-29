@@ -49,6 +49,14 @@ Pure calculation code (TypeScript, no UI, no database). Run the tests with Node 
 - Each session sets individual scoring: Stableford (default), Stableford + Net, or Net only. Leaders shows only the tabs that apply.
 - Each session is "View and edit" or "View only". In View only, players cannot change scores (enforced in the database rules too); administrators still can.
 
+### People, roles and events (Phase 2, 30 Oct)
+- **Player directory**: one list for all events. Full name, nickname, mobile, usual handicap. Mobiles are only visible to administrators.
+- **Per event**: each player's nickname and handicap start from the directory and can be changed for that event only.
+- **Personal link**: one per person, for every event. Opening it links that phone to the person. After that, an event link (e.g. posted in WhatsApp) opens the event with the right view. A phone that has never opened a personal link is asked to open it first.
+- **Roles**: Owner (first Google sign-in; also by personal link) > App administrator (set in the directory) > Event administrator (set per event by Owner or app admins; can set up that event but not change its status or administrators) > Player.
+- **Event status**: Planning (administrators only) · Active (players can see and score) · Complete (players can see) · Archived (hidden from players) · Delete (Owner and app admins).
+- **Bottom tabs**: Order of Play · Scores · Leaders · Cup (Tours only) · Setup (administrators).
+
 ## Open questions
 - None at present.
 

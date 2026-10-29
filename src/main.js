@@ -10,21 +10,21 @@ const store = (k, v) => { try { localStorage.setItem(KEY + k, JSON.stringify(v))
 
 /* ---------- live state, mirrored from the shared database ---------- */
 let me = null;             // signed-in user { uid, anonymous, email }
-let tourId = null;
-let tour = null;           // tour set-up (players, courses, days, groups, teams, settings)
-let scores = {};           // scores[dayId][entrantId] = 18 holes
+let cfg = null;            // app/config: { ownerUids } (the Owner's Google sign-in)
+let myPid = null;          // the person this phone belongs to (from their personal link)
+let myPerson = null;       // their directory entry: { fullName, nick, role, adminOf, … }
+let tourId = null;         // the open event
+let tour = null;           // event set-up (players, courses, sessions, groups, teams, settings, status, eventAdmins)
+let scores = {};           // scores[sessionId][entrantId] = 18 holes
 let locks = {};            // locks[unitKey] = { dayId, groupId, at, by }
-let invites = {};          // invites[playerId] = token (administrator only)
-let members = {};          // members[playerId] = number of phones signed in (administrator only)
-let inviteInfo = {};       // inviteInfo[playerId] = { token, sentAt } (administrator only)
-let people = {};           // the administrator's private address book: people[id] = { name, phone, hcp }
-let myPlayerId = null;
-let gate = { state: 'loading' };   // loading | landing | tours | joining | error | ready
+let people = {};           // the player directory (staff only): people[personId] = { fullName, nick, phone, hcp, role, token, sentAt }
+let devCount = {};         // phones signed in per person (staff only)
+let gate = { state: 'loading' };   // loading | landing | joining | switch | home | people | error | ready
 let sync = { pending: false, cached: false };
 const server = { tour: null, scores: {}, locks: {} };   // last values seen from the database
 let unsubs = [];
 const ui = Object.assign({ tab: 'day', day: null, group: null, unit: {}, view: 'gross', lb: 'stab', lbScope: 'day', as: 'admin', cb: true, open: {}, setup: 'tour' }, load(':ui', {}), { entry: null });
-const persist = () => store(':ui', { tab: ui.tab, day: ui.day, group: ui.group, unit: ui.unit, view: ui.view, lb: ui.lb, lbScope: ui.lbScope, as: ui.as, cb: ui.cb, setup: ui.setup });
+const persist = () => store(':ui', { tab: ui.tab, showDemo: ui.showDemo, day: ui.day, group: ui.group, unit: ui.unit, view: ui.view, lb: ui.lb, lbScope: ui.lbScope, as: ui.as, cb: ui.cb, setup: ui.setup });
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const uid = p => p + Math.random().toString(36).slice(2, 8);
@@ -471,14 +471,36 @@ function viewSetup() {
   const tabs = [['tour', 'Event'], ['players', 'Players'], ['courses', 'Courses'], ['days', 'Sessions & groups']];
   const seg = `<div class="seg" role="group" aria-label="Setup section">${tabs.map(([k, l]) => `<button aria-pressed="${ui.setup === k}" data-setup="${k}">${l}</button>`).join('')}</div>`;
   const body = ui.setup === 'tour' ? setupTour() : ui.setup === 'players' ? setupPlayers() : ui.setup === 'courses' ? setupCourses() : setupDays();
-  return `<section class="card"><div class="ghead"><div class="eyebrow">Administrator</div><h2>Set-up</h2>${seg}</div>${body}</section>
-    <section class="card"><div class="pad" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between"><span class="small muted">Signed in as ${esc(me.email || 'administrator')}. App version ${esc(window.APP_VERSION || 'dev')}.</span><span style="display:flex;gap:8px"><button class="btn" data-mytours>My events</button><button class="btn" data-signout>Sign out</button></span></div></section>`;
+  return `<section class="card"><div class="ghead"><div class="eyebrow">${esc(roleName())}</div><h2>Set-up</h2>${seg}</div>${body}</section>
+    <section class="card"><div class="pad" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between"><span class="small muted">Signed in as ${esc(myName())}. App version ${esc(window.APP_VERSION || 'dev')}.</span><span style="display:flex;gap:8px"><button class="btn" data-home>My Home</button></span></div></section>`;
 }
+const STATUS = [['planning', 'Planning'], ['active', 'Active'], ['complete', 'Complete'], ['archived', 'Archived']];
+const STATUS_NOTE = {
+  planning: 'Only administrators can see this event, so you can set it up in advance.',
+  active: 'Players can see this event and enter scores.',
+  complete: 'Players can still see the results. Set each session to View only to freeze scores.',
+  archived: 'Hidden from players. Administrators can still open it.',
+};
+const statusName = s => (STATUS.find(x => x[0] === s) || STATUS[0])[1];
 function setupTour() {
+  const canStatus = isAppAdmin();
+  const admins = tour.eventAdmins || [];
+  const adminName = pid => esc(PIDX[pid]?.name || people[pid]?.nick || people[pid]?.fullName || 'Someone');
+  const others = Object.entries(people).filter(([id, x]) => !PIDX[id] && !admins.includes(id) && !x.demo && x.role === 'player').sort((a, b) => byName({ name: a[1].fullName }, { name: b[1].fullName }));
+  const adminBox = canStatus
+    ? `<div class="book adm">${[...tour.players].sort(byName).map(p => `<label class="bk"><input type="checkbox" data-evadmin="${p.id}" ${admins.includes(p.id) ? 'checked' : ''}><span>${esc(p.name)}</span><span class="muted small">${people[p.id]?.fullName && people[p.id].fullName !== p.name ? esc(people[p.id].fullName) : ''}</span></label>`).join('')}
+        ${admins.filter(id => !PIDX[id]).map(id => `<label class="bk"><input type="checkbox" data-evadmin="${id}" checked><span>${adminName(id)}</span><span class="muted small">not playing</span></label>`).join('')}</div>
+      ${others.length ? `<select id="addadmin" aria-label="Add an administrator who is not playing"><option value="">Add someone who is not playing…</option>${others.map(([id, x]) => `<option value="${id}">${esc(x.fullName)}</option>`).join('')}</select>` : ''}
+      <span class="small muted">Event administrators can set up this event: players, handicaps, sessions, groups and scores. They cannot change its status or who the administrators are. Owner and app administrators can always manage every event.</span>`
+    : `<div>${admins.length ? admins.map(adminName).join(', ') : '<span class="muted">None</span>'}</div><span class="small muted">Set by the app administrators.</span>`;
   return `<div class="form">
     <div class="frow prevbox"><label for="as">See the app as a player</label><span class="small muted">Pick a player to check exactly what they will see. A banner lets you switch back.</span>
       <select id="as"><option value="admin" selected>Choose a player…</option>${[...tour.players].sort(teamFirst).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
     <div class="frow"><label for="t-title">Event name</label><input type="text" id="t-title" data-tf="title" value="${esc(tour.title)}"></div>
+    <div class="frow"><span class="lab">Status</span>
+      ${canStatus ? `<div class="seg" role="group" aria-label="Event status">${STATUS.map(([k, l]) => `<button aria-pressed="${(tour.status || 'planning') === k}" data-status="${k}">${l}</button>`).join('')}</div>` : `<div><span class="stchip st-${tour.status}">${statusName(tour.status)}</span></div>`}
+      <span class="small muted">${STATUS_NOTE[tour.status || 'planning']}</span></div>
+    <div class="frow"><span class="lab">Event administrators</span>${adminBox}</div>
     <label class="switch tourmode"><input type="checkbox" id="istour" ${isTour() ? 'checked' : ''}> <span>This event is a Tour<span class="small muted" style="display:block;font-weight:500">Two teams play matches for a Cup. Turn on to show team settings, team colours and the Cup page.</span></span></label>
     ${!isTour() ? '' : ['t1', 't2'].map((t, i) => `<div class="frow"><label for="tn-${t}">Team ${i + 1}</label><input type="text" id="tn-${t}" value="${esc(tour.teams[t].name)}" data-teamname="${t}">
       <div class="swatches" role="group" aria-label="Team ${i + 1} colour">${SWATCHES.map(([n, c]) => `<button style="background:${c}" aria-label="${n}" title="${n}" aria-pressed="${tour.teams[t].color === c}" data-swatch="${t}" data-c="${c}"></button>`).join('')}</div></div>`).join('')}
@@ -486,9 +508,11 @@ function setupTour() {
     <div class="frow"><span class="lab">Live leaderboards for players</span>
       <div class="seg" role="group">${[['live', 'Live'], ['hidden', 'Hidden'], ['until', 'Live until']].map(([k, l]) => `<button aria-pressed="${tour.visibility === k}" data-vis="${k}">${l}</button>`).join('')}</div>
       ${tour.visibility === 'until' ? `<input type="time" id="until" value="${tour.until}" aria-label="Hide leaderboards at" style="max-width:140px">` : ''}
-      <span class="small muted">${tour.visibility === 'hidden' ? 'Players see only their own group until you publish.' : tour.visibility === 'until' ? `Players see live leaderboards until ${tour.until}, then only their own group.` : 'Players can follow every group live.'}</span></div></div>`;
+      <span class="small muted">${tour.visibility === 'hidden' ? 'Players see only their own group until you publish.' : tour.visibility === 'until' ? `Players see live leaderboards until ${tour.until}, then only their own group.` : 'Players can follow every group live.'}</span></div>
+    ${isAppAdmin() ? `<div class="frow"><span class="lab">Delete this event</span>${ui.confirmDelEv ? `<div class="confirm"><span>Delete <b>${esc(tour.title)}</b> and all its scores? This cannot be undone. Players stay in the directory. To keep the results, set the status to Archived instead.</span><div style="display:flex;gap:8px"><button class="btn danger" data-delevyes>Delete for good</button><button class="btn" data-delevno>Cancel</button></div></div>` : `<div><button class="btn" data-delev>Delete event…</button></div>`}</div>` : ''}
+    </div>`;
 }
-const byName = (a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' });
+const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'en', { sensitivity: 'base' });
 const teamStyle = t => (t ? `style="color:var(--${t}-text);font-weight:600;border-left:4px solid var(--${t})"` : '');
 /* Australian mobiles: 0412 345 678 / +61 412 345 678; other international numbers in +country form. */
 function normPhone(v) {
@@ -501,53 +525,81 @@ function normPhone(v) {
 }
 const showPhone = n => (n && n.startsWith('+614') ? `0${n.slice(3, 6)} ${n.slice(6, 9)} ${n.slice(9)}` : n || '');
 const teamFirst = (a, b) => (!!b.team - !!a.team) || byName(a, b);
-const phoneOf = p => (p.dir && people[p.dir]?.phone) || '';
+const firstName = s => String(s || '').trim().split(/\s+/)[0] || '';
 function setupPlayers() {
   const sub = ui.ptab === 'teams' && !isTour() ? 'list' : ui.ptab || 'list';
-  const seg = `<div class="pad" style="padding-bottom:0"><div class="seg" role="group" aria-label="Players section">${[['list', 'Players'], ['invites', 'Invites'], ...(isTour() ? [['teams', 'Teams']] : [])].map(([k, l]) => `<button aria-pressed="${sub === k}" data-ptab="${k}">${l}</button>`).join('')}</div></div>`;
+  const seg = `<div class="pad" style="padding-bottom:0"><div class="seg" role="group" aria-label="Players section">${[['list', 'Players'], ['invites', 'Links'], ...(isTour() ? [['teams', 'Teams']] : [])].map(([k, l]) => `<button aria-pressed="${sub === k}" data-ptab="${k}">${l}</button>`).join('')}</div></div>`;
   return seg + (sub === 'invites' ? setupInvites() : sub === 'teams' ? teamLists() : setupPlayerList());
 }
 function setupPlayerList() {
-  const list = [...tour.players].sort(teamFirst);
-  const firstNone = list.findIndex(p => !p.team);
-  const row = p => `<tr class="${p.team ? '' : 'noteam'}"><td><input type="text" value="${esc(p.name)}" data-pf="name" data-pid="${p.id}" aria-label="Name" ${teamStyle(p.team)}></td>
-    <td><select data-pf="team" data-pid="${p.id}" aria-label="Team" class="${p.team ? '' : 'warnsel'}"><option value="">No team</option><option value="t1" ${p.team === 't1' ? 'selected' : ''}>${esc(tName('t1'))}</option><option value="t2" ${p.team === 't2' ? 'selected' : ''}>${esc(tName('t2'))}</option></select></td>
+  const list = [...tour.players].sort(isTour() ? teamFirst : byName);
+  const firstNone = isTour() ? list.findIndex(p => !p.team) : -1;
+  const teamSel = p => (isTour() ? `<td><select data-pf="team" data-pid="${p.id}" aria-label="Team" class="${p.team ? '' : 'warnsel'}"><option value="">No team</option><option value="t1" ${p.team === 't1' ? 'selected' : ''}>${esc(tName('t1'))}</option><option value="t2" ${p.team === 't2' ? 'selected' : ''}>${esc(tName('t2'))}</option></select></td>` : '');
+  const cols = isTour() ? 4 : 3;
+  const row = p => `<tr class="${p.team || !isTour() ? '' : 'noteam'}"><td><input type="text" value="${esc(p.name)}" data-pf="name" data-pid="${p.id}" aria-label="Nickname for this event" ${isTour() ? teamStyle(p.team) : ''}>${people[p.id]?.fullName ? `<span class="fullname">${esc(people[p.id].fullName)}</span>` : ''}</td>
+    ${teamSel(p)}
     <td><input type="text" inputmode="numeric" value="${p.hcp}" data-pf="hcp" data-pid="${p.id}" aria-label="Playing handicap" style="width:52px"></td>
     <td><button class="btn sm ghost" data-delp="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></td></tr>
-    ${ui.confirmDel === p.id ? `<tr><td colspan="4"><div class="confirm"><span>Remove <b>${esc(p.name)}</b> from this event? They will also be taken out of any groups. Scores already entered stay saved, and they stay in your address book.</span><div style="display:flex;gap:8px"><button class="btn danger" data-delyes="${p.id}">Yes, remove</button><button class="btn" data-delno>Cancel</button></div></div></td></tr>` : ''}`;
-  const rows = list.map((p, i) => (i === firstNone ? `<tr class="divider"><td colspan="4">No team <span>(${list.length - firstNone}) · not in the Red v Blue Cup unless placed on a side</span></td></tr>` : '') + row(p)).join('');
-  const inTour = new Set(tour.players.map(p => p.dir).filter(Boolean));
-  const book = Object.entries(people).filter(([id]) => !inTour.has(id)).map(([id, x]) => ({ id, ...x })).sort(byName);
+    ${ui.confirmDel === p.id ? `<tr><td colspan="${cols}"><div class="confirm"><span>Remove <b>${esc(p.name)}</b> from this event? They will also be taken out of any groups. Scores already entered stay saved, and they stay in the player directory.</span><div style="display:flex;gap:8px"><button class="btn danger" data-delyes="${p.id}">Yes, remove</button><button class="btn" data-delno>Cancel</button></div></div></td></tr>` : ''}`;
+  const rows = list.map((p, i) => (i === firstNone ? `<tr class="divider"><td colspan="${cols}">No team <span>(${list.length - firstNone}) · not in the ${esc(tName('t1'))} v ${esc(tName('t2'))} Cup unless placed on a side</span></td></tr>` : '') + row(p)).join('');
+  const book = Object.entries(people).filter(([id, x]) => !PIDX[id] && (!x.demo || ui.showDemo)).map(([id, x]) => ({ id, ...x, name: x.fullName })).sort(byName);
+  const demoCount = Object.entries(people).filter(([id, x]) => !PIDX[id] && x.demo).length;
   const q = (ui.bookQ || '').toLowerCase();
-  return `<div class="pad small muted" style="padding-bottom:0">${tour.players.length} players in this event: ${tour.players.filter(p => p.team === 't1').length} ${esc(tName('t1'))}, ${tour.players.filter(p => p.team === 't2').length} ${esc(tName('t2'))}, ${tour.players.filter(p => !p.team).length} with no team. Handicap is the playing handicap for this event.</div>
-    <div style="overflow-x:auto"><table class="lb ed"><thead><tr><th>Name</th><th>Team</th><th>HC</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+  const summary = isTour() ? `${tour.players.length} players in this event: ${tour.players.filter(p => p.team === 't1').length} ${esc(tName('t1'))}, ${tour.players.filter(p => p.team === 't2').length} ${esc(tName('t2'))}, ${tour.players.filter(p => !p.team).length} with no team.` : `${tour.players.length} players in this event.`;
+  return `<div class="pad small muted" style="padding-bottom:0">${summary} The nickname and handicap here are for this event only; they start from the player directory.</div>
+    <div style="overflow-x:auto"><table class="lb ed"><thead><tr><th>Nickname</th>${isTour() ? '<th>Team</th>' : ''}<th>HC</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="form addbox">
-      <div class="frow"><span class="lab">Add from your address book</span>
+      <div class="frow"><span class="lab">Add from the player directory</span>
         ${book.length ? `<input type="search" id="bookq" placeholder="Search ${book.length} people" value="${esc(ui.bookQ || '')}">
-        <div class="book">${book.map(x => `<label class="bk" ${q && !x.name.toLowerCase().includes(q) ? 'hidden' : ''}><input type="checkbox" data-pick="${x.id}" ${ui.picks?.[x.id] ? 'checked' : ''}><span>${esc(x.name)}</span><span class="muted small">${x.hcp ?? ''}</span></label>`).join('')}</div>
+        <div class="book">${book.map(x => `<label class="bk" ${q && !(x.fullName + ' ' + (x.nick || '')).toLowerCase().includes(q) ? 'hidden' : ''}><input type="checkbox" data-pick="${x.id}" ${ui.picks?.[x.id] ? 'checked' : ''}><span>${esc(x.fullName)}${x.nick ? ` <span class="muted">(${esc(x.nick)})</span>` : ''}${x.demo ? ' <span class="hid">Demo</span>' : ''}</span><span class="muted small">${x.hcp ?? ''}</span></label>`).join('')}</div>
         <div><button class="btn primary" id="addpicked" ${Object.values(ui.picks || {}).some(Boolean) ? '' : 'disabled'}>Add selected to this event</button></div>`
-        : '<span class="small muted">Everyone you add is saved to your private address book, so regulars can be added to future events with a tick.</span>'}</div>
-      <div class="frow"><label for="np">New player</label><div class="newp"><input type="text" id="np" placeholder="Nickname"><input type="tel" id="nphone" placeholder="Mobile (optional)" inputmode="tel"><button class="btn" id="addp">Add</button></div></div>
+        : '<span class="small muted">Everyone in the player directory is already in this event.</span>'}
+        ${demoCount ? `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="showdemo" ${ui.showDemo ? 'checked' : ''}> Show ${demoCount} demo players</label>` : ''}</div>
+      <div class="frow"><span class="lab">New player</span><span class="small muted">Adds them to the player directory too, so they can be added to any future event.</span>
+        <div class="newp2"><input type="text" id="nfull" placeholder="Full name" autocomplete="off"><input type="text" id="nnick" placeholder="Nickname (optional)" autocomplete="off"><input type="tel" id="nphone" placeholder="Mobile (optional)" inputmode="tel"><input type="text" id="nhcp" placeholder="HC" inputmode="numeric" style="width:64px"><button class="btn" id="addp">Add</button></div></div>
     </div>`;
 }
-function inviteText(p) { return `Hi ${p.name}, here is your link to ${tour.title} scoring. Tap it to sign in on your phone (keep this text in case you need it again): ${inviteUrl(p)}`; }
+const appUrl = () => location.origin + location.pathname;
+const personalUrl = (pid, eid = tourId) => `${appUrl()}#join=${people[pid]?.token}${eid ? '&e=' + eid : ''}`;
+const eventUrl = () => `${appUrl()}#e=${tourId}`;
+function inviteText(pid) {
+  const nm = PIDX[pid]?.name || people[pid]?.nick || firstName(people[pid]?.fullName);
+  return `Hi ${nm}, here is your personal link for golf scoring${tour ? ` (${tour.title})` : ''}. Tap it to sign in on your phone. It works for future events too, so keep this text: ${personalUrl(pid)}`;
+}
 const smsSep = () => (/iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) ? '&' : '?');
+const smsHref = pid => { const n = normPhone(people[pid]?.phone); return n && people[pid]?.token ? `sms:${n}${smsSep()}body=${encodeURIComponent(inviteText(pid))}` : null; };
+const linkStatus = pid => (devCount[pid] ? `<span class="st ok">Signed in${devCount[pid] > 1 ? ` · ${devCount[pid]} phones` : ''}</span>` : people[pid]?.sentAt ? '<span class="st sent">Texted</span>' : '<span class="st">Not sent</span>');
 function setupInvites() {
-  const list = [...tour.players].sort(teamFirst);
-  const sent = list.filter(p => inviteInfo[p.id]?.sentAt).length, joined = list.filter(p => members[p.id]).length;
-  const missing = list.filter(p => !invites[p.id]).length;
+  const list = [...tour.players].sort(isTour() ? teamFirst : byName);
+  const sent = list.filter(p => people[p.id]?.sentAt).length, joined = list.filter(p => devCount[p.id]).length;
+  const sel = ui.sel || {}; const nSel = list.filter(p => sel[p.id]).length;
+  const q = ui.queue;
+  const qBox = q ? (() => {
+    const pid = q.ids[q.i];
+    if (!pid) return `<div class="queue"><b>Done.</b> ${q.ids.length} text${q.ids.length === 1 ? '' : 's'} opened. <button class="btn sm" data-qstop>Close</button></div>`;
+    return `<div class="queue"><span>Texting ${q.ids.length} ${q.ids.length === 1 ? 'person' : 'people'}: <b>${q.i + 1} of ${q.ids.length}</b></span>
+      <a class="btn primary" href="${smsHref(pid)}" data-sent="${pid}" data-q>Text ${esc(PIDX[pid]?.name)}</a>
+      <span class="small muted">Press send in Messages, then come back here for the next one.</span>
+      <div style="display:flex;gap:8px"><button class="btn sm" data-qskip>Skip</button><button class="btn sm" data-qstop>Stop</button></div></div>`;
+  })() : '';
   const rows = list.map(p => {
-    const raw = ui.phoneDraft?.[p.id] ?? showPhone(phoneOf(p));
+    const raw = ui.phoneDraft?.[p.id] ?? showPhone(people[p.id]?.phone);
     const norm = normPhone(raw); const bad = raw && !norm;
-    const status = members[p.id] ? '<span class="st ok">Signed in</span>' : inviteInfo[p.id]?.sentAt ? '<span class="st sent">Texted</span>' : '<span class="st">Not sent</span>';
-    const can = norm && invites[p.id];
-    return `<div class="invrow"><div class="nm" ${p.team ? `style="color:var(--${p.team}-text)"` : ''}>${esc(p.name)} ${status}</div>
+    const href = smsHref(p.id);
+    return `<div class="invrow"><div class="nm"><label class="sel"><input type="checkbox" data-sel="${p.id}" ${sel[p.id] ? 'checked' : ''} aria-label="Select ${esc(p.name)}"><span ${isTour() && p.team ? `style="color:var(--${p.team}-text)"` : ''}>${esc(p.name)}</span></label> ${linkStatus(p.id)}</div>
       <input type="tel" inputmode="tel" value="${esc(raw)}" placeholder="Mobile number" data-phone="${p.id}" aria-label="Mobile for ${esc(p.name)}" class="${bad ? 'bad' : ''}">
-      <div class="ia">${can ? `<a class="btn sm primary" href="sms:${norm}${smsSep()}body=${encodeURIComponent(inviteText(p))}" data-sent="${p.id}">Text link</a>` : `<button class="btn sm" disabled>Text link</button>`}<button class="btn sm" data-copy="${p.id}" ${invites[p.id] ? '' : 'disabled'}>Copy</button></div>
+      <div class="ia">${href ? `<a class="btn sm primary" href="${href}" data-sent="${p.id}">Text link</a>` : `<button class="btn sm" disabled>Text link</button>`}<button class="btn sm" data-copy="${p.id}" ${people[p.id]?.token ? '' : 'disabled'}>Copy</button></div>
       ${bad ? '<div class="small err-t">Check this number: an Australian mobile looks like 0412 345 678.</div>' : ''}</div>`;
   }).join('');
-  return `<div class="pad" style="display:grid;gap:6px;padding-bottom:4px"><span><b>${sent}</b> of ${list.length} texted · <b>${joined}</b> signed in</span>
-    <span class="small muted">Text link opens your Messages app with the number and the player's own link filled in: just press send. Numbers are saved to your private address book, never shown to players.${missing ? ' Making links…' : ''}</span></div>
+  return `<div class="pad evlink"><b>Event link for your WhatsApp group</b>
+      <span class="small muted">Anyone who has opened their personal link on their phone goes straight into this event with the right view for them. Anyone who hasn't is asked to open their personal link first.</span>
+      <code>${esc(eventUrl())}</code>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm primary" data-copyevent>Copy event link</button>${navigator.share ? '<button class="btn sm" data-shareevent>Share…</button>' : ''}</div></div>
+    <div class="pad" style="display:grid;gap:6px;padding-bottom:4px;border-top:1px solid var(--rule)"><b>Personal links</b><span><b>${sent}</b> of ${list.length} texted · <b>${joined}</b> signed in</span>
+    <span class="small muted">Each person has one personal link that works for every event they are in. Text link opens Messages with their number and link filled in: just press send. Send it again any time someone has lost it. Mobile numbers are kept in the player directory and never shown to players.</span>
+    <div class="selbar"><span class="small">Select:</span><button class="btn sm" data-selall="all">All</button><button class="btn sm" data-selall="out">Not signed in</button><button class="btn sm" data-selall="none">None</button>
+      <button class="btn sm primary" data-textsel ${nSel ? '' : 'disabled'}>Text selected (${nSel})</button></div></div>
+    ${qBox}
     <div class="invlist">${rows}</div>`;
 }
 function teamLists() {
@@ -559,7 +611,6 @@ function teamLists() {
   return `<div class="teams-panel"><div class="tp-head"><b>Teams</b><div class="seg" role="group" aria-label="Sort teams by">${[['name', 'A–Z'], ['hcp', 'Handicap']].map(([k, l]) => `<button aria-pressed="${sort === k}" data-tsort="${k}">${l}</button>`).join('')}</div></div>
     <div class="tcols">${col('t1')}${col('t2')}</div>${none ? col(null) : ''}</div>`;
 }
-const inviteUrl = p => `${location.origin}${location.pathname}#t=${tourId}&join=${invites[p.id]}`;
 function setupCourses() {
   const list = tour.courses.map(c => c.tees.map(t => {
     const open = ui.open['crs:' + c.id + t.id];
@@ -680,10 +731,17 @@ function renderSheet() {
 }
 
 
-/* ---------- sign-in, tour loading and syncing with the shared database ---------- */
+/* ---------- who is using the app ---------- */
 const hashParams = () => Object.fromEntries(location.hash.replace(/^#/, '').split('&').filter(Boolean).map(kv => kv.split('=').map(decodeURIComponent)));
-const isRealAdmin = () => !!(me && tour && (tour.adminUids || []).includes(me.uid));
+const isOwner = () => !!(me && ((cfg?.ownerUids || []).includes(me.uid) || myPerson?.role === 'owner'));
+const isAppAdmin = () => isOwner() || myPerson?.role === 'appAdmin';
+const isStaff = () => isAppAdmin() || (myPerson?.adminOf || []).length > 0;
+const isEventAdmin = () => !!(tour && myPid && (tour.eventAdmins || []).includes(myPid));
+const isRealAdmin = () => !!(tour && (isAppAdmin() || isEventAdmin()));
+const roleName = () => (isOwner() ? 'Owner' : isAppAdmin() ? 'App administrator' : isEventAdmin() ? 'Event administrator' : 'Player');
+const myName = () => myPerson?.fullName || me?.name || me?.email || 'you';
 const errText = e => (e && e.code === 'permission-denied' ? 'You do not have permission to do that.' : e && e.code === 'unavailable' ? 'No signal: it will sync when you are back in range.' : (e && e.message) || 'Something went wrong.');
+const ACTIVE = ['active', 'complete'];
 
 /** Who may score what: administrators can do anything; players only their own group (checked again by the database rules). */
 function accessMap(t) {
@@ -698,15 +756,24 @@ function accessMap(t) {
   }
   return a;
 }
-const tourForSave = t => { const c = clone(t); delete c.access; return c; };
+// Fields worked out from the set-up when saving (who can see the event, who may score what).
+const DERIVED = ['access', 'members', 'visibleTo'];
+const tourForSave = t => { const c = clone(t) || {}; DERIVED.forEach(k => delete c[k]); return c; };
+function eventDoc(t) {
+  const c = tourForSave(t);
+  c.status = c.status || 'planning'; c.eventAdmins = c.eventAdmins || [];
+  c.members = [...new Set([...c.players.map(p => p.id), ...c.eventAdmins])];
+  c.visibleTo = ACTIVE.includes(c.status) ? [...c.members] : [...c.eventAdmins];
+  c.access = accessMap(c);
+  return c;
+}
 let tourTimer = null;
 let tourDirty = false;   // a local set-up change is waiting to save: don't let an incoming copy overwrite it
 function queueTourSave() {
   clearTimeout(tourTimer); tourDirty = true;
   tourTimer = setTimeout(() => {
     tourDirty = false;
-    const data = tourForSave(tour); data.access = accessMap(tour);
-    fb.set(`tours/${tourId}`, data).catch(e => failed('Set-up not saved', e));
+    fb.set(`events/${tourId}`, eventDoc(tour)).catch(e => failed('Set-up not saved', e));
   }, 350);
 }
 function unitKeyFor(dayId, ent) {
@@ -722,129 +789,255 @@ function syncOut() {
   for (const [dayId, ents] of Object.entries(scores)) for (const [ent, holes] of Object.entries(ents)) {
     if (JSON.stringify(server.scores[dayId]?.[ent]) === JSON.stringify(holes)) continue;
     (server.scores[dayId] = server.scores[dayId] || {})[ent] = clone(holes);
-    fb.set(`tours/${tourId}/scores/${dayId}_${ent}`, { dayId, ent, holes, groupId: acc[dayId]?.[ent] || '', unitKey: unitKeyFor(dayId, ent), by: me.uid, at: fb.now() })
+    fb.set(`events/${tourId}/scores/${dayId}_${ent}`, { dayId, ent, holes, groupId: acc[dayId]?.[ent] || '', unitKey: unitKeyFor(dayId, ent), by: me.uid, at: fb.now() })
       .catch(e => failed('Score not saved', e));
   }
   for (const k of Object.keys(locks)) if (!server.locks[k]) {
     server.locks[k] = locks[k]; const [dayId, groupId] = k.split(':');
-    fb.set(`tours/${tourId}/locks/${k}`, { dayId, groupId, by: me.uid, at: fb.now() }).catch(e => failed('Not submitted', e));
+    fb.set(`events/${tourId}/locks/${k}`, { dayId, groupId, by: me.uid, at: fb.now() }).catch(e => failed('Not submitted', e));
   }
-  for (const k of Object.keys(server.locks)) if (!locks[k]) { delete server.locks[k]; fb.del(`tours/${tourId}/locks/${k}`).catch(e => toast('Not unlocked: ' + errText(e))); }
+  for (const k of Object.keys(server.locks)) if (!locks[k]) { delete server.locks[k]; fb.del(`events/${tourId}/locks/${k}`).catch(e => toast('Not unlocked: ' + errText(e))); }
 }
 let pendingRender = false;
 let syncErr = null;
 function failed(what, e) { syncErr = `${what}: ${errText(e)}`; toast(syncErr); safeRender(); }
 function safeRender() {
   const a = document.activeElement;
-  if (a && a.closest && a.closest('#view') && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && /text|date|time|number/.test(a.type)))) { pendingRender = true; return; }
+  if (a && a.closest && a.closest('#view') && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && /text|date|time|number|tel|search/.test(a.type)))) { pendingRender = true; return; }
   render();
 }
 document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender) { pendingRender = false; safeRender(); } }, 0));
 
 function stopWatching() { unsubs.forEach(u => u && u()); unsubs = []; }
 function openTour(id) {
-  stopWatching(); tourId = id; tour = null; scores = {}; locks = {}; invites = {}; members = {};
+  stopWatching(); tourId = id; tour = null; scores = {}; locks = {};
   server.tour = null; server.scores = {}; server.locks = {};
-  store(':tour', id);
+  store(':tour', id); if (!location.hash.includes('e=' + id)) history.replaceState(null, '', '#e=' + id);
   gate = { state: 'loading' }; render();
-  unsubs.push(fb.watchDoc(`tours/${id}`, (data, meta) => {
-    if (!data) { gate = { state: 'error', msg: 'This event could not be found, or you do not have access to it.' }; render(); return; }
+  unsubs.push(fb.watchDoc(`events/${id}`, (data, meta) => {
+    if (!data) { gate = { state: 'error', msg: 'This event could not be found. It may have been deleted.' }; render(); return; }
     sync.cached = meta.cached;
     // Ignore an incoming copy that is unchanged from the last one seen (keeps local edits that are about to save),
     // or that arrives while a local change is waiting to save.
     const same = server.tour && JSON.stringify(tourForSave(data)) === JSON.stringify(tourForSave(server.tour));
     if (tourDirty || (same && tour)) { if (gate.state !== 'ready') { gate = { state: 'ready' }; safeRender(); } return; }
-    tour = data; server.tour = clone(data);
-    if (isRealAdmin() && !unsubs.adminWatch) startAdminWatch();
+    tour = tourForSave(data); server.tour = clone(tour);
     gate = { state: 'ready' }; safeRender();
-  }, e => { gate = { state: 'error', msg: errText(e) }; render(); }));
-  unsubs.push(fb.watchColl(`tours/${id}/scores`, (docs, meta) => {
+  }, e => { gate = { state: 'error', msg: e && e.code === 'permission-denied' ? 'This event is not open to you. It may still be in planning, or you may not be in it. Check with the organiser.' : errText(e) }; render(); }));
+  unsubs.push(fb.watchColl(`events/${id}/scores`, (docs, meta) => {
     const s = {}; docs.forEach(({ data }) => ((s[data.dayId] = s[data.dayId] || {})[data.ent] = data.holes));
     scores = s; server.scores = clone(s); sync.pending = meta.pending; sync.cached = meta.cached; if (tour) safeRender();
   }, () => {}));
-  unsubs.push(fb.watchColl(`tours/${id}/locks`, docs => {
+  unsubs.push(fb.watchColl(`events/${id}/locks`, docs => {
     const l = {}; docs.forEach(({ id: k, data }) => (l[k] = data)); locks = l; server.locks = clone(l); if (tour) safeRender();
   }, () => {}));
 }
+/* The player directory and who has signed in (staff only), watched for the whole visit. */
+let staffUnsubs = [];
+function startStaffWatch() {
+  if (staffUnsubs.length || !isStaff()) return;
+  staffUnsubs.push(fb.watchColl('people', docs => { const m = {}; docs.forEach(({ id, data }) => (m[id] = data)); people = m; safeRender(); }, () => {}));
+  staffUnsubs.push(fb.watchColl('devices', docs => { const m = {}; docs.forEach(({ data }) => (m[data.personId] = (m[data.personId] || 0) + 1)); devCount = m; safeRender(); }, () => {}));
+}
+function stopAll() { stopWatching(); staffUnsubs.forEach(u => u && u()); staffUnsubs = []; meUnsub && meUnsub(); meUnsub = null; }
 const making = new Set();
-function ensureInvites() {
-  for (const p of tour.players) if (!invites[p.id] && !making.has(p.id)) {
-    making.add(p.id); const tk = token();
-    fb.set(`tours/${tourId}/invites/${tk}`, { playerId: p.id, at: fb.now() }).catch(e => failed('Invite link not made', e)).finally(() => making.delete(p.id));
+/** Make sure each of these people has a personal link. */
+function ensureLinks(pids) {
+  for (const pid of pids) if (people[pid] && !people[pid].token && !making.has(pid)) {
+    making.add(pid); const tk = token();
+    fb.set(`links/${tk}`, { personId: pid, name: people[pid].nick || firstName(people[pid].fullName), at: fb.now() })
+      .then(() => fb.merge(`people/${pid}`, { token: tk }))
+      .catch(e => failed('Personal link not made', e)).finally(() => making.delete(pid));
   }
 }
-function savePerson(p, patch) {
-  if (!p.dir) { p.dir = fb.newId(); }
-  const cur = people[p.dir] || { name: p.name, hcp: p.hcp, phone: '' };
-  const next = { ...cur, ...patch }; people[p.dir] = next;
-  fb.set(`directory/${me.uid}/people/${p.dir}`, next).catch(e => failed('Address book not saved', e));
+function savePerson(pid, patch) {
+  people[pid] = { ...(people[pid] || {}), ...patch };
+  fb.merge(`people/${pid}`, patch).catch(e => failed('Player directory not saved', e));
 }
-function startAdminWatch() {
-  unsubs.adminWatch = true;
-  unsubs.push(fb.watchColl(`tours/${tourId}/invites`, docs => { const m = {}, info = {}; docs.forEach(({ id: t, data }) => { m[data.playerId] = t; info[data.playerId] = { token: t, sentAt: data.sentAt || null }; }); invites = m; inviteInfo = info; if (tour) safeRender(); }, () => {}));
-  unsubs.push(fb.watchColl(`directory/${me.uid}/people`, docs => { const m = {}; docs.forEach(({ id, data }) => (m[id] = data)); people = m; if (tour) safeRender(); }, () => {}));
-  unsubs.push(fb.watchColl(`tours/${tourId}/members`, docs => { const m = {}; docs.forEach(({ data }) => (m[data.playerId] = (m[data.playerId] || 0) + 1)); members = m; if (tour) safeRender(); }, () => {}));
+function newPerson({ fullName, nick, phone, hcp }) {
+  const pid = fb.newId();
+  const rec = { fullName, nick: nick || firstName(fullName), phone: phone || '', hcp: hcp ?? 18, role: 'player', adminOf: [], at: fb.now() };
+  people[pid] = rec;
+  fb.set(`people/${pid}`, rec).catch(e => failed('Player not saved', e));
+  return pid;
 }
-async function claimInvite(tid, tok) {
+
+/* ---------- signing in ---------- */
+let meUnsub = null;
+async function loadIdentity() {
+  cfg = await fb.get('app/config').catch(() => null);
+  const dev = me ? await fb.get(`devices/${me.uid}`).catch(() => null) : null;
+  myPid = dev?.personId || null;
+  myPerson = myPid ? await fb.get(`people/${myPid}`).catch(() => null) : null;
+  if (myPid && !meUnsub) meUnsub = fb.watchDoc(`people/${myPid}`, d => { if (d) { const was = isStaff(); myPerson = d; if (!was && isStaff()) startStaffWatch(); safeRender(); } }, () => {});
+  startStaffWatch();
+}
+async function claimLink(tok, eid, force = false) {
   gate = { state: 'joining' }; render();
   try {
     if (!me) me = await fb.signInAnon();
-    const existing = await fb.get(`tours/${tid}/members/${me.uid}`).catch(() => null);
-    if (!existing) {
-      const inv = await fb.get(`tours/${tid}/invites/${tok}`);
-      if (!inv) throw new Error('This invite link is no longer valid. Ask your administrator for a new one.');
-      await fb.set(`tours/${tid}/members/${me.uid}`, { playerId: inv.playerId, token: tok, at: fb.now() });
-      myPlayerId = inv.playerId;
-    } else myPlayerId = existing.playerId;
-    store(':me:' + tid, myPlayerId);
-    openTour(tid);
+    const link = await fb.get(`links/${tok}`);
+    if (!link) throw new Error('This link is no longer valid. Ask the organiser to text you a new one.');
+    const dev = await fb.get(`devices/${me.uid}`).catch(() => null);
+    if (dev && dev.personId !== link.personId && !force) {
+      const cur = await fb.get(`people/${dev.personId}`).catch(() => null);
+      gate = { state: 'switch', tok, eid, from: cur?.nick || cur?.fullName || 'someone else', to: link.name || 'another player' }; render(); return;
+    }
+    if (!dev || dev.personId !== link.personId || dev.token !== tok) await fb.set(`devices/${me.uid}`, { personId: link.personId, token: tok, at: fb.now() });
+    meUnsub && meUnsub(); meUnsub = null;
+    await loadIdentity();
+    if (eid) openTour(eid); else { history.replaceState(null, '', location.pathname); showHome(); }
   } catch (e) { gate = { state: 'error', msg: errText(e) }; render(); }
 }
-async function showMyTours() {
-  gate = { state: 'tours', tours: null }; render();
-  try { gate = { state: 'tours', tours: await fb.adminTours(me.uid) }; } catch (e) { gate = { state: 'tours', tours: [], err: errText(e) }; }
+async function ownerSignIn() {
+  try {
+    me = await fb.signInGoogle();
+    cfg = await fb.get('app/config').catch(() => null);
+    if (!cfg) { cfg = { ownerUids: [me.uid] }; await fb.set('app/config', cfg); }
+    if (cfg.ownerUids.includes(me.uid)) {
+      const dev = await fb.get(`devices/${me.uid}`).catch(() => null);
+      if (!dev) {
+        const pid = fb.newId();
+        await fb.set(`people/${pid}`, { fullName: me.name || me.email || 'Owner', nick: firstName(me.name) || 'Owner', phone: '', hcp: 18, role: 'owner', adminOf: [], at: fb.now() });
+        await fb.set(`devices/${me.uid}`, { personId: pid, token: 'owner', at: fb.now() });
+      }
+    }
+    meUnsub && meUnsub(); meUnsub = null;
+    await loadIdentity();
+    if (!myPid) { gate = { state: 'landing', msg: 'This Google account is not the app owner. Players and administrators sign in with their personal link.' }; render(); return; }
+    showHome();
+  } catch (e) { toast('Sign-in did not complete: ' + errText(e)); }
+}
+async function showHome() {
+  stopWatching(); tourId = null; tour = null; store(':tour', null);
+  if (location.hash) history.replaceState(null, '', location.pathname);
+  gate = { state: 'home', events: gate.state === 'home' ? gate.events : null }; render();
+  try {
+    const evs = isAppAdmin() ? await fb.list('events') : myPid ? await fb.listContains('events', 'visibleTo', myPid) : [];
+    gate = { state: 'home', events: evs };
+  } catch (e) { gate = { state: 'home', events: [], err: errText(e) }; }
   render();
 }
 async function createTour(demo) {
   const id = fb.newId();
-  const base = demo ? Object.assign(clone(SEED.tour), { title: 'Demo event', isTour: true }) : {
-    title: 'New event', isTour: false, teams: { t1: { name: 'Red', color: '#c8372d' }, t2: { name: 'Blue', color: '#2a5fb0' } }, pointsToWin: 0, visibility: 'live', until: '12:30',
+  let base, seedScores = null;
+  if (demo) {
+    base = clone(SEED.tour); base.title = 'Demo event'; base.isTour = true; base.status = 'active';
+    base.days.forEach((d, i) => { d.title = 'Session ' + (i + 1); d.scoring = 'both'; d.mode = 'edit'; });
+    // Demo players live in the directory (marked Demo), reused by every demo event.
+    const bySeed = Object.fromEntries(Object.entries(people).filter(([, x]) => x.seedId).map(([pid, x]) => [x.seedId, pid]));
+    const map = {}; const items = [];
+    for (const p of base.players) {
+      let pid = bySeed[p.id];
+      if (!pid) { pid = fb.newId(); const rec = { fullName: p.name, nick: p.name, phone: '', hcp: p.hcp, role: 'player', adminOf: [], demo: true, seedId: p.id, at: fb.now() }; people[pid] = rec; items.push({ path: `people/${pid}`, data: rec }); }
+      map[p.id] = pid;
+    }
+    try { await fb.batchSet(items); } catch (e) { toast('Could not add demo players: ' + errText(e)); return; }
+    base.players.forEach(p => (p.id = map[p.id]));
+    base.days.forEach(d => d.groups.forEach(g => { g.slots.a = g.slots.a.map(x => (x ? map[x] || x : x)); g.slots.b = g.slots.b.map(x => (x ? map[x] || x : x)); }));
+    seedScores = {}; for (const [dayId, ents] of Object.entries(SEED.scores)) { seedScores[dayId] = {}; for (const [ent, holes] of Object.entries(ents)) seedScores[dayId][map[ent] || ent] = holes; }
+  } else base = {
+    title: 'New event', isTour: false, status: 'planning', teams: { t1: { name: 'Red', color: '#c8372d' }, t2: { name: 'Blue', color: '#2a5fb0' } }, pointsToWin: 0, visibility: 'live', until: '12:30',
     players: [], courses: clone(SEED.tour.courses), days: [{ id: 'd1', title: 'Session 1', date: new Date().toISOString().slice(0, 10), courseId: SEED.tour.courses[0].id, teeId: SEED.tour.courses[0].tees[0].id, teamsOn: true, scoring: 'stableford', mode: 'edit', hidden: true, briefing: '', groups: [] }],
   };
-  if (demo) base.days.forEach((d, i) => { d.title = 'Session ' + (i + 1); d.scoring = 'both'; d.mode = 'edit'; });
-  base.adminUids = [me.uid];
-  base.access = accessMap(base);
+  base.eventAdmins = []; base.createdBy = myPid;
+  const data = eventDoc(base);
   try {
-    await fb.set(`tours/${id}`, base);
-    if (demo) {
+    await fb.set(`events/${id}`, data);
+    if (seedScores) {
       const items = [];
-      for (const [dayId, ents] of Object.entries(SEED.scores)) for (const [ent, holes] of Object.entries(ents))
-        items.push({ path: `tours/${id}/scores/${dayId}_${ent}`, data: { dayId, ent, holes, groupId: base.access[dayId][ent] || '', unitKey: '', by: me.uid, at: fb.now() } });
+      for (const [dayId, ents] of Object.entries(seedScores)) for (const [ent, holes] of Object.entries(ents))
+        items.push({ path: `events/${id}/scores/${dayId}_${ent}`, data: { dayId, ent, holes, groupId: data.access[dayId][ent] || '', unitKey: '', by: me.uid, at: fb.now() } });
       await fb.batchSet(items);
     }
-    location.hash = 't=' + id; openTour(id);
+    ui.setup = 'tour'; ui.tab = demo ? 'day' : 'setup'; openTour(id);
   } catch (e) { toast('Could not create the event: ' + errText(e)); }
+}
+async function deleteEvent() {
+  const id = tourId; const t = tour;
+  try {
+    const kids = [...await fb.list(`events/${id}/scores`).then(x => x.map(d => `events/${id}/scores/${d.id}`)), ...await fb.list(`events/${id}/locks`).then(x => x.map(d => `events/${id}/locks/${d.id}`))];
+    for (const pth of kids) await fb.del(pth);
+    await fb.del(`events/${id}`);
+    for (const pid of t.eventAdmins || []) if (people[pid]) savePerson(pid, { adminOf: (people[pid].adminOf || []).filter(x => x !== id) });
+    ui.confirmDelEv = false; toast(`${t.title} deleted.`); showHome();
+  } catch (e) { toast('Not deleted: ' + errText(e)); }
 }
 
 function renderEmpty() {
   document.querySelector('.tabs').hidden = !isRealAdmin();
-  document.getElementById('view').innerHTML = `<section class="card"><h2>${esc(tour.title)}</h2><div class="pad" style="padding-top:0">Nothing has been published yet. Your administrator will share the order of play here.</div></section>`;
+  document.getElementById('view').innerHTML = `<section class="card"><h2>${esc(tour.title)}</h2><div class="pad" style="padding-top:0;display:grid;gap:10px"><span>Nothing has been published yet. The organiser will share the order of play here.</span><div><button class="btn" data-home>My Home</button></div></div></section>`;
   measure(); persist();
+}
+const evDates = t => { const ds = (t.days || []).map(d => d.date).filter(Boolean).sort(); return ds.length ? (ds[0] === ds[ds.length - 1] ? fmtDate(ds[0]) : `${fmtDate(ds[0])} – ${fmtDate(ds[ds.length - 1])}`) : ''; };
+function viewHome() {
+  const evs = gate.events;
+  const order = { active: 0, planning: 1, complete: 2, archived: 3 };
+  const sorted = (evs || []).slice().sort((a, b) => (order[a.data.status] ?? 1) - (order[b.data.status] ?? 1) || String(b.data.days?.[0]?.date || '').localeCompare(String(a.data.days?.[0]?.date || '')));
+  const shown = sorted.filter(e => e.data.status !== 'archived' || ui.showArchived);
+  const nArch = sorted.length - sorted.filter(e => e.data.status !== 'archived').length;
+  const item = e => { const t = e.data; const mine = (t.eventAdmins || []).includes(myPid); const inIt = (t.players || []).some(p => p.id === myPid);
+    return `<button class="evitem" data-opentour="${e.id}"><span class="evt"><b>${esc(t.title)}</b>${isStaff() || t.status === 'complete' ? `<span class="stchip st-${t.status}">${statusName(t.status)}</span>` : ''}</span>
+      <span class="small muted">${evDates(t)}${t.isTour ? ' · Tour' : ''} · ${(t.players || []).length} players${mine ? ' · <b>You are an event administrator</b>' : isAppAdmin() && !inIt ? '' : ''}</span></button>`; };
+  const list = evs === null ? '<span class="muted">Loading your events…</span>' : shown.length ? shown.map(item).join('') : `<span class="muted">${isAppAdmin() ? 'No events yet. Create one below.' : 'You are not in any events that are open yet. Your organiser will let you know.'}</span>`;
+  return `<section class="card"><div class="ghead"><div class="eyebrow">${esc(roleName() === 'Player' && isStaff() ? 'Event administrator' : roleName())}</div><h2>My Home</h2></div>
+    <div class="pad" style="padding-top:0;display:grid;gap:10px">${gate.err ? `<div class="banner">${esc(gate.err)}</div>` : ''}
+      <span class="small muted">${isAppAdmin() ? 'All events.' : 'The events you are in.'} Tap one to open it.</span>
+      <div class="evlist">${list}</div>
+      ${nArch ? `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="showarch" ${ui.showArchived ? 'checked' : ''}> Show ${nArch} archived</label>` : ''}
+      ${isAppAdmin() ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-newtour="blank">Create a new event</button><button class="btn" data-newtour="demo">Create a demo event</button></div>
+        <span class="small muted">New events start in Planning, so only administrators can see them until you make them Active. The demo event is an Active two-team Tour with example players, groups and scores.</span>` : ''}
+      ${isStaff() ? `<div><button class="btn" data-people>Player directory</button></div>` : ''}
+    </div></section>
+    <section class="card"><div class="pad small muted" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between"><span>Signed in as <b>${esc(myName())}</b>${roleName() !== 'Player' ? ` (${esc(roleName())})` : ''}. App version ${esc(window.APP_VERSION || 'dev')}.</span>${me && !me.anonymous ? '<button class="btn sm" data-signout>Sign out</button>' : ''}</div></section>`;
+}
+function viewPeople() {
+  const q = (ui.dirQ || '').toLowerCase();
+  const all = Object.entries(people).map(([id, x]) => ({ id, ...x, name: x.fullName })).sort(byName);
+  const nDemo = all.filter(x => x.demo).length;
+  const list = all.filter(x => !x.demo || ui.showDemo);
+  const roleTxt = r => (r === 'owner' ? 'Owner' : r === 'appAdmin' ? 'App admin' : '');
+  const row = x => {
+    const open = ui.pedit === x.id;
+    const href = smsHref(x.id);
+    const raw = ui.phoneDraft?.[x.id] ?? showPhone(x.phone); const bad = raw && !normPhone(raw);
+    return `<div class="prow" ${q && !(x.fullName + ' ' + (x.nick || '')).toLowerCase().includes(q) ? 'hidden' : ''}>
+      <button class="phd" data-pedit="${x.id}" aria-expanded="${open}"><span><b>${esc(x.fullName)}</b>${x.nick ? ` <span class="muted">(${esc(x.nick)})</span>` : ''}${x.demo ? ' <span class="hid">Demo</span>' : ''}${roleTxt(x.role) ? ` <span class="stchip st-active">${roleTxt(x.role)}</span>` : ''}${(x.adminOf || []).length ? ' <span class="stchip st-planning">Event admin</span>' : ''}</span><span class="small">HC ${x.hcp ?? '–'} ${linkStatus(x.id)}</span></button>
+      ${open ? `<div class="form pform">
+        <div class="two"><div class="frow"><label>Full name</label><input type="text" value="${esc(x.fullName)}" data-pp="fullName" data-pid="${x.id}"></div><div class="frow"><label>Nickname</label><input type="text" value="${esc(x.nick || '')}" data-pp="nick" data-pid="${x.id}"></div></div>
+        <div class="two"><div class="frow"><label>Mobile</label><input type="tel" inputmode="tel" value="${esc(raw)}" data-pp="phone" data-pid="${x.id}" class="${bad ? 'bad' : ''}"></div><div class="frow"><label>Usual handicap</label><input type="text" inputmode="numeric" value="${x.hcp ?? ''}" data-pp="hcp" data-pid="${x.id}" style="max-width:90px"></div></div>
+        ${bad ? '<div class="small err-t">Check this number: an Australian mobile looks like 0412 345 678.</div>' : ''}
+        <span class="small muted">The nickname and handicap are the starting values when this person is added to an event. Each event can then change its own.</span>
+        ${isAppAdmin() && x.role !== 'owner' ? `<div class="frow"><span class="lab">Role</span><div class="seg" role="group" aria-label="Role">${[['player', 'Player'], ['appAdmin', 'App administrator']].map(([k, l]) => `<button aria-pressed="${(x.role || 'player') === k}" data-role="${k}" data-pid="${x.id}">${l}</button>`).join('')}</div>
+          <span class="small muted">App administrators can create and manage every event and the player directory. Event administrators are chosen inside each event.</span></div>` : ''}
+        <div class="frow"><span class="lab">Personal link</span><div style="display:flex;gap:8px;flex-wrap:wrap">${href ? `<a class="btn sm primary" href="${href}" data-sent="${x.id}">Text link</a>` : '<button class="btn sm" disabled>Text link</button>'}<button class="btn sm" data-copy="${x.id}" ${x.token ? '' : 'disabled'}>Copy</button>${x.token && isAppAdmin() ? `<button class="btn sm" data-relink="${x.id}">Make a new link</button>` : ''}</div>
+          <span class="small muted">Make a new link only if the old one was shared by mistake: phones already signed in keep working, but the old link stops working.</span></div>
+        ${isAppAdmin() && x.role !== 'owner' && x.id !== myPid ? (ui.confirmDelPerson === x.id ? `<div class="confirm"><span>Remove <b>${esc(x.fullName)}</b> from the directory? Events they are already in keep their name and scores, but their personal link stops working.</span><div style="display:flex;gap:8px"><button class="btn danger" data-delpersonyes="${x.id}">Remove</button><button class="btn" data-delpersonno>Cancel</button></div></div>` : `<div><button class="btn sm" data-delperson="${x.id}">Remove from directory…</button></div>`) : ''}
+      </div>` : ''}</div>`;
+  };
+  return `<section class="card"><div class="ghead"><div class="eyebrow">All events</div><h2>Player directory</h2></div>
+    <div class="pad" style="padding-top:0;display:grid;gap:10px"><span class="small muted">Everyone who has been added to an event. Anyone here can be added to any event. Mobile numbers are only seen by administrators.</span>
+      <input type="search" id="dirq" placeholder="Search ${list.length} people" value="${esc(ui.dirQ || '')}">
+      ${nDemo ? `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="showdemo" ${ui.showDemo ? 'checked' : ''}> Show ${nDemo} demo players</label>` : ''}</div>
+    <div class="plist">${list.map(row).join('') || '<div class="pad muted">Nobody yet.</div>'}</div>
+    <div class="form addbox"><span class="lab" style="font-weight:700">Add a person</span>
+      <div class="newp2"><input type="text" id="dfull" placeholder="Full name" autocomplete="off"><input type="text" id="dnick" placeholder="Nickname (optional)" autocomplete="off"><input type="tel" id="dphone" placeholder="Mobile (optional)" inputmode="tel"><input type="text" id="dhcp" placeholder="HC" inputmode="numeric" style="width:64px"><button class="btn" id="addperson">Add</button></div></div>
+    <div class="pad"><button class="btn" data-home>Back to My Home</button></div></section>`;
 }
 function viewGate() {
   const card = (title, body) => `<section class="card"><h2>${title}</h2><div class="pad" style="padding-top:0;display:grid;gap:12px">${body}</div></section>`;
   if (gate.state === 'loading') return card('Loading…', '<span class="muted">Getting the latest scores.</span>');
-  if (gate.state === 'joining') return card('Joining the tour…', '<span class="muted">Signing you in on this phone.</span>');
-  if (gate.state === 'error') return card('Something is not right', `<span>${esc(gate.msg)}</span><div style="display:flex;gap:8px;flex-wrap:wrap">${me && !me.anonymous ? '<button class="btn" data-mytours>My events</button>' : ''}<button class="btn" data-signout>Sign out</button></div>`);
-  if (gate.state === 'tours') {
-    const list = gate.tours === null ? '<span class="muted">Loading your events…</span>' : gate.tours.length ? gate.tours.map(t => `<button class="btn" style="text-align:left" data-opentour="${t.id}"><b>${esc(t.data.title)}</b> <span class="muted small">${t.data.players.length} players · ${t.data.days.length} day${t.data.days.length === 1 ? '' : 's'}</span></button>`).join('') : '<span class="muted">You have no events yet.</span>';
-    return card('My events', `<span class="small muted">Signed in as ${esc(me.email || me.name || 'administrator')}.</span>${gate.err ? `<div class="banner">${esc(gate.err)}</div>` : ''}${list}
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-newtour="blank">Create a new event</button><button class="btn" data-newtour="demo">Create a demo event</button><button class="btn" data-signout>Sign out</button></div>
-      <span class="small muted">The demo event is a two-team Tour with example players, groups and scores, so you can try everything with real phones.</span>`);
-  }
-  return card('Golf Tour Scorer', `<span>Players: open the personal link your event administrator sent you. It signs you in on this phone.</span>
-    <span class="small muted">Lost your link? Ask the administrator to send it again.</span>
-    <div><button class="btn primary" data-gsignin>Administrator sign-in with Google</button></div>`);
+  if (gate.state === 'joining') return card('Signing you in…', '<span class="muted">Linking this phone to you.</span>');
+  if (gate.state === 'home') return viewHome();
+  if (gate.state === 'people') return viewPeople();
+  if (gate.state === 'switch') return card('Switch person on this phone?', `<span>This phone is signed in as <b>${esc(gate.from)}</b>. The link you opened is <b>${esc(gate.to)}</b>'s personal link.</span>
+    <span class="small muted">Only switch if this is your phone and the link was meant for you.</span>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-switchyes>Switch to ${esc(gate.to)}</button><button class="btn" data-switchno>Stay as ${esc(gate.from)}</button></div>`);
+  if (gate.state === 'error') return card('Something is not right', `<span>${esc(gate.msg)}</span><div style="display:flex;gap:8px;flex-wrap:wrap">${myPid ? '<button class="btn" data-home>My Home</button>' : ''}</div>`);
+  return card('Golf Tour Scorer', `${gate.msg ? `<div class="banner" style="margin:0">${esc(gate.msg)}</div>` : ''}
+    <span>Open the personal link you were texted. It signs you in on this phone, and after that every event link works, including links posted in WhatsApp.</span>
+    <span class="small muted">Lost your link? Ask the organiser to text it again.</span>
+    <div><button class="btn sm" data-gsignin>Owner sign-in with Google</button></div>`);
 }
 function syncPill() {
   if (!tourId || !tour) return '';
@@ -854,16 +1047,21 @@ function syncPill() {
 }
 window.addEventListener('online', () => safeRender()); window.addEventListener('offline', () => safeRender());
 
-function boot() {
+function route() {
   const h = hashParams();
+  if (h.join) { claimLink(h.join, h.e); return; }
+  if (!me || (!myPid && !isOwner())) { gate = { state: 'landing', msg: h.e ? 'To open this event, first open the personal link you were texted on this phone. Then tap the event link again.' : null }; render(); return; }
+  const eid = h.e || load(':tour', null);
+  if (eid) openTour(eid); else showHome();
+}
+function boot() {
+  let started = false;
   fb.onAuth(async u => {
-    me = u;
-    if (h.join && h.t) { const known = load(':me:' + h.t, null); if (me && known) { myPlayerId = known; openTour(h.t); } else claimInvite(h.t, h.join); return; }
-    if (!me) { gate = { state: 'landing' }; render(); return; }
-    const tid = h.t || load(':tour', null);
-    if (me.anonymous) { if (tid) { myPlayerId = load(':me:' + tid, null); openTour(tid); } else { gate = { state: 'landing' }; render(); } return; }
-    if (tid) openTour(tid); else showMyTours();
+    me = u; if (started) return; started = true;
+    if (me) await loadIdentity();
+    route();
   });
+  window.addEventListener('hashchange', () => { const h = hashParams(); if (h.join || (h.e && h.e !== tourId)) route(); });
 }
 
 /* ---------- shell ---------- */
@@ -877,34 +1075,38 @@ const ICONS = {
 function measure() { document.documentElement.style.setProperty('--toph', document.getElementById('top').offsetHeight + 'px'); }
 function render() {
   const tb0 = document.getElementById('tabs');
+  const homeBtn = `<button class="homebtn" data-home aria-label="My Home"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7M5.5 9.5V20h13V9.5"/></svg><span>My Home</span></button>`;
+  document.querySelector('.top h1').innerHTML = (gate.state === 'ready' || gate.state === 'people') && myPid ? homeBtn : 'Golf Tour Scorer';
   if (gate.state !== 'ready' || !tour) {
-    document.getElementById('who').innerHTML = esc(me && !me.anonymous ? (me.email || 'Administrator') : '');
+    document.getElementById('who').innerHTML = myPerson ? `<span class="evname">${esc(myPerson.nick || myPerson.fullName)}</span><span class="role">${esc(roleName() === 'Player' && isStaff() ? 'Event administrator' : roleName())}</span>` : '';
     document.getElementById('view').innerHTML = viewGate(); tb0.innerHTML = ''; document.querySelector('.tabs').hidden = true; measure(); return;
   }
   document.querySelector('.tabs').hidden = false;
   PIDX = P();
-  if (!isRealAdmin()) ui.as = myPlayerId || '__none';
+  if (!isRealAdmin()) ui.as = myPid || '__none';
   if (!DAY()) { renderEmpty(); return; }
   ui.day = DAY().id;
   if (ui.tab === 'setup' && !isAdmin()) ui.tab = 'day';
   course = teeOf(DAY());
   applyTeams();
-  document.getElementById('who').innerHTML = `<span class="evname">${esc(tour.title)}</span><span class="role">${esc(isAdmin() ? 'Administrator' : PIDX[ui.as]?.name || 'Viewer')}</span>${syncPill()}`;
+  document.getElementById('who').innerHTML = `<span class="evname">${esc(tour.title)}</span><span class="role">${esc(isAdmin() ? roleName() : PIDX[ui.as]?.name || myPerson?.nick || 'Viewer')}</span>${syncPill()}`;
   const v = document.getElementById('view');
   const previewing = isRealAdmin() && ui.as !== 'admin';
   v.innerHTML = (previewing ? `<div class="banner prev">Previewing as <b>${esc(PIDX[ui.as]?.name || '?')}</b>: this is what they see. <button class="btn sm" data-stoppreview>Stop preview</button></div>` : '') + (syncErr ? `<div class="banner err"><b>Something did not save.</b> ${esc(syncErr)} <button class="btn sm" data-dismiss>OK</button></div>` : '') + (ui.tab === 'day' ? viewDay() : ui.tab === 'scores' ? viewScores() : ui.tab === 'leaders' ? viewLeaders() : ui.tab === 'cup' ? viewCup() : viewSetup());
   if (ui.tab === 'cup' && !isTour()) ui.tab = 'leaders';
-  const tabs = [['day', 'Session'], ['scores', 'Scores'], ['leaders', 'Leaders'], ...(isTour() ? [['cup', 'Cup']] : []), ...(isAdmin() ? [['setup', 'Setup']] : [])];
+  const tabs = [['day', 'Order of Play'], ['scores', 'Scores'], ['leaders', 'Leaders'], ...(isTour() ? [['cup', 'Cup']] : []), ...(isAdmin() ? [['setup', 'Setup']] : [])];
   const tb = document.getElementById('tabs'); tb.style.gridTemplateColumns = `repeat(${tabs.length}, 1fr)`;
   tb.innerHTML = tabs.map(([k, l]) => `<button data-tab="${k}" ${ui.tab === k ? 'aria-current="page"' : ''}>${ICONS[k]}${l}</button>`).join('');
   measure(); persist(); syncOut();
-  if (isRealAdmin() && ui.tab === 'setup' && ui.setup === 'players' && ui.ptab === 'invites') ensureInvites();
+  if (isRealAdmin() && ui.tab === 'setup' && ui.setup === 'players' && ui.ptab === 'invites') ensureLinks(tour.players.map(p => p.id));
 }
 function findGroup(did, gid) { return dayById(did).groups.find(g => g.id === gid); }
 window.addEventListener('resize', measure);
 document.addEventListener('click', e => {
   const sentA = e.target.closest('a[data-sent]');
-  if (sentA) { const pid = sentA.dataset.sent; const tk = invites[pid]; if (tk) fb.set(`tours/${tourId}/invites/${tk}`, { playerId: pid, at: fb.now(), sentAt: fb.now() }).catch(err => failed('Not marked as sent', err)); return; }
+  if (sentA) { const pid = sentA.dataset.sent; savePerson(pid, { sentAt: fb.now() });
+    if ('q' in sentA.dataset && ui.queue) setTimeout(() => { ui.queue.i++; safeRender(); }, 600);
+    return; }
   const t = e.target.closest('button, tr.hrow, tr.tap, [data-cancel]'); if (!t) return;
   const d = t.dataset;
   if (d.tab) { ui.tab = d.tab; render(); window.scrollTo(0, 0); }
@@ -921,18 +1123,44 @@ document.addEventListener('click', e => {
   else if (d.swatch) { tour.teams[d.swatch].color = d.c; render(); }
   else if (d.unlock) { delete locks[d.unlock]; render(); toast('Unlocked. Players in the match can now edit.'); }
   else if (d.submit) { if (!document.getElementById('ack')?.checked) return; locks[d.submit] = { at: Date.now(), by: me.uid }; render(); toast('Scores submitted and locked.'); }
-  else if (d.invite) { const pid = d.invite; ui.open['inv:' + pid] = !ui.open['inv:' + pid];
-    if (!invites[pid]) { const tk = token(); invites[pid] = tk; fb.set(`tours/${tourId}/invites/${tk}`, { playerId: pid, at: fb.now() }).catch(err => toast('Invite not saved: ' + errText(err))); }
-    render(); }
-  else if (d.reinvite) { const pid = d.reinvite; const old = invites[pid]; const tk = token(); invites[pid] = tk;
-    fb.set(`tours/${tourId}/invites/${tk}`, { playerId: pid, at: fb.now() }).then(() => old && fb.del(`tours/${tourId}/invites/${old}`)).catch(err => toast('Invite not saved: ' + errText(err)));
-    render(); toast('New link made. The old link no longer works for new phones.'); }
-  else if (d.copy) { const p = tour.players.find(x => x.id === d.copy); const txt = inviteUrl(p); try { navigator.clipboard.writeText(txt).then(() => toast('Link copied.'), () => toast('Select the link and copy it.')); } catch (err) { toast('Select the link and copy it.'); } }
-  else if (t.id === 'addp') { const n = document.getElementById('np').value.trim(); if (!n) return; const ph = document.getElementById('nphone').value;
+  else if (d.relink) { const pid = d.relink; const old = people[pid]?.token; const tk = token();
+    fb.set(`links/${tk}`, { personId: pid, name: people[pid].nick || firstName(people[pid].fullName), at: fb.now() }).then(() => { savePerson(pid, { token: tk, sentAt: null }); return old && fb.del(`links/${old}`); }).catch(err => toast('Link not made: ' + errText(err)));
+    toast('New link made. Text it to them: the old link no longer works.'); }
+  else if (d.copy) { const url = personalUrl(d.copy, tourId); copyText(url, 'Personal link copied.'); }
+  else if ('copyevent' in d) { copyText(eventUrl(), 'Event link copied. Paste it into your WhatsApp group.'); }
+  else if ('shareevent' in d) { navigator.share({ title: tour.title, text: `${tour.title}: order of play, scores and leaderboards. Tap to open:`, url: eventUrl() }).catch(() => {}); }
+  else if (d.selall) { const list = tour.players; ui.sel = {}; if (d.selall === 'all') list.forEach(p => (ui.sel[p.id] = true)); if (d.selall === 'out') list.filter(p => !devCount[p.id]).forEach(p => (ui.sel[p.id] = true)); render(); }
+  else if ('textsel' in d) { const ids = tour.players.filter(p => ui.sel?.[p.id]).sort(byName).map(p => p.id);
+    const ok = ids.filter(smsHref); const no = ids.filter(id => !smsHref(id));
+    if (no.length) toast(`No mobile number for ${no.map(id => PIDX[id]?.name).join(', ')}. Use Copy for them.`);
+    if (ok.length) { ui.queue = { ids: ok, i: 0 }; render(); window.scrollTo(0, 0); } }
+  else if ('qskip' in d) { ui.queue.i++; render(); }
+  else if ('qstop' in d) { ui.queue = null; ui.sel = {}; render(); }
+  else if (t.id === 'addp') { const full = document.getElementById('nfull').value.trim(); if (!full) { toast('Enter their full name.'); return; }
+    const nick = document.getElementById('nnick').value.trim(); const ph = document.getElementById('nphone').value; const hc = parseInt(document.getElementById('nhcp').value, 10);
     if (ph && !normPhone(ph)) { toast('Check the mobile number: it should look like 0412 345 678.'); return; }
-    const p = { id: uid('p'), name: n, team: null, hcp: 18 }; tour.players.push(p); savePerson(p, { name: n, hcp: 18, phone: normPhone(ph) || '' }); render(); toast(`${n} added. Set their team and handicap.`); }
-  else if (t.id === 'addpicked') { const ids = Object.keys(ui.picks || {}).filter(k => ui.picks[k]); ids.forEach(id => { const x = people[id]; if (x) tour.players.push({ id: uid('p'), name: x.name, team: null, hcp: x.hcp ?? 18, dir: id }); });
-    ui.picks = {}; render(); toast(`${ids.length} added. Set their teams and handicaps.`); }
+    const pid = newPerson({ fullName: full, nick, phone: normPhone(ph) || '', hcp: isNaN(hc) ? 18 : hc });
+    tour.players.push({ id: pid, name: people[pid].nick, team: null, hcp: people[pid].hcp }); render(); toast(`${people[pid].nick} added to the event and the player directory.`); }
+  else if (t.id === 'addpicked') { const ids = Object.keys(ui.picks || {}).filter(k => ui.picks[k] && !PIDX[k]); ids.forEach(id => { const x = people[id]; if (x) tour.players.push({ id, name: x.nick || firstName(x.fullName), team: null, hcp: x.hcp ?? 18 }); });
+    ui.picks = {}; render(); toast(`${ids.length} added.${isTour() ? ' Set their teams and' : ' Check their'} handicaps for this event.`); }
+  else if (t.id === 'addperson') { const full = document.getElementById('dfull').value.trim(); if (!full) { toast('Enter their full name.'); return; }
+    const nick = document.getElementById('dnick').value.trim(); const ph = document.getElementById('dphone').value; const hc = parseInt(document.getElementById('dhcp').value, 10);
+    if (ph && !normPhone(ph)) { toast('Check the mobile number: it should look like 0412 345 678.'); return; }
+    const pid = newPerson({ fullName: full, nick, phone: normPhone(ph) || '', hcp: isNaN(hc) ? 18 : hc }); ensureLinks([pid]); render(); toast(`${full} added to the directory.`); }
+  else if (d.pedit) { ui.pedit = ui.pedit === d.pedit ? null : d.pedit; if (ui.pedit) ensureLinks([ui.pedit]); render(); }
+  else if (d.role && d.pid) { savePerson(d.pid, { role: d.role }); render(); }
+  else if (d.delperson) { ui.confirmDelPerson = d.delperson; render(); }
+  else if ('delpersonno' in d) { ui.confirmDelPerson = null; render(); }
+  else if (d.delpersonyes) { const pid = d.delpersonyes; const x = people[pid]; ui.confirmDelPerson = null; ui.pedit = null;
+    fb.del(`people/${pid}`).then(() => { if (x?.token) fb.del(`links/${x.token}`).catch(() => {}); delete people[pid]; render(); toast(`${x.fullName} removed from the directory.`); }).catch(err => toast('Not removed: ' + errText(err))); }
+  else if (d.status) { tour.status = d.status; render(); toast(`Event is now ${statusName(d.status)}. ${STATUS_NOTE[d.status]}`); }
+  else if ('delev' in d) { ui.confirmDelEv = true; render(); }
+  else if ('delevno' in d) { ui.confirmDelEv = false; render(); }
+  else if ('delevyes' in d) { deleteEvent(); }
+  else if ('people' in d) { stopWatching(); tourId = null; tour = null; gate = { state: 'people' }; render(); window.scrollTo(0, 0); }
+  else if ('home' in d) { ui.queue = null; showHome(); window.scrollTo(0, 0); }
+  else if ('switchyes' in d) { claimLink(gate.tok, gate.eid, true); }
+  else if ('switchno' in d) { route2Home(); }
   else if (d.ptab) { ui.ptab = d.ptab; render(); }
   else if (d.stoppreview !== undefined) { ui.as = 'admin'; render(); }
   else if (t.id === 'addc') {
@@ -957,7 +1185,6 @@ document.addEventListener('click', e => {
   else if (d.delyes) { const pid = d.delyes; const nm = PIDX[pid]?.name;
     tour.players = tour.players.filter(p => p.id !== pid);
     tour.days.forEach(day => day.groups.forEach(g => { g.slots.a = g.slots.a.map(x => (x === pid ? null : x)); g.slots.b = g.slots.b.map(x => (x === pid ? null : x)); }));
-    if (invites[pid]) { fb.del(`tours/${tourId}/invites/${invites[pid]}`).catch(() => {}); delete invites[pid]; }
     ui.confirmDel = null; render(); toast(`${nm} removed.`); }
   else if (d.tsort) { ui.teamSort = d.tsort; render(); }
   else if ('swapyes' in d) { const w = ui.swap; ui.swap = null; if (w) { findGroup(w.did, w.gid).slots[w.side][w.k] = w.nv; } render(); }
@@ -965,10 +1192,9 @@ document.addEventListener('click', e => {
   else if (d.mode && d.did) { dayById(d.did).mode = d.mode; render(); toast(d.mode === 'view' ? 'Session is now view only for players.' : 'Players can enter scores again.'); }
   else if (d.scoring && d.did) { dayById(d.did).scoring = d.scoring; render(); }
   else if ('dismiss' in d) { syncErr = null; render(); }
-  else if ('gsignin' in d) { fb.signInGoogle().then(u => { me = u; showMyTours(); }).catch(err => toast('Sign-in did not complete: ' + errText(err))); }
-  else if ('signout' in d) { stopWatching(); tourId = null; tour = null; store(':tour', null); fb.signOut().then(() => { location.hash = ''; gate = { state: 'landing' }; render(); }); }
-  else if ('mytours' in d) { stopWatching(); tourId = null; tour = null; store(':tour', null); location.hash = ''; showMyTours(); }
-  else if (d.opentour) { location.hash = 't=' + d.opentour; openTour(d.opentour); }
+  else if ('gsignin' in d) { ownerSignIn(); }
+  else if ('signout' in d) { stopAll(); tourId = null; tour = null; store(':tour', null); fb.signOut().then(() => { me = null; myPid = null; myPerson = null; people = {}; history.replaceState(null, '', location.pathname); gate = { state: 'landing' }; render(); }); }
+  else if (d.opentour) { ui.tab = 'day'; ui.as = 'admin'; openTour(d.opentour); window.scrollTo(0, 0); }
   else if (d.newtour) { createTour(d.newtour === 'demo'); }
   else if (t.classList.contains('hrow')) openEntry(+d.hole);
   else if ('cancel' in d) { ui.entry = null; renderSheet(); }
@@ -986,14 +1212,18 @@ document.addEventListener('change', e => {
   else if (t.id === 'ack') { const b = document.querySelector('[data-submit]'); if (b) b.disabled = !t.checked; }
   else if (d.teamname) { tour.teams[d.teamname].name = t.value.trim() || (d.teamname === 't1' ? 'Team 1' : 'Team 2'); render(); }
   else if (d.tf) { if (d.tf === 'pointsToWin') { const n = parseFloat(t.value); if (!isNaN(n)) tour.pointsToWin = n; } else tour[d.tf] = t.value; render(); }
-  else if (d.phone) { const p = tour.players.find(x => x.id === d.phone); const n = normPhone(t.value);
-    ui.phoneDraft = ui.phoneDraft || {};
-    if (!t.value.trim()) { delete ui.phoneDraft[p.id]; savePerson(p, { phone: '' }); }
-    else if (n) { delete ui.phoneDraft[p.id]; savePerson(p, { phone: n, name: p.name }); }
-    else ui.phoneDraft[p.id] = t.value;
-    render(); }
+  else if (d.phone) { setPhone(d.phone, t.value); }
+  else if (d.pp) { const pid = d.pid;
+    if (d.pp === 'phone') setPhone(pid, t.value);
+    else if (d.pp === 'hcp') { const n = parseInt(t.value, 10); if (!isNaN(n)) savePerson(pid, { hcp: n }); render(); }
+    else { const v = t.value.trim(); if (v || d.pp === 'nick') savePerson(pid, { [d.pp]: v }); render(); } }
+  else if (d.sel) { ui.sel = ui.sel || {}; ui.sel[d.sel] = t.checked; render(); }
+  else if (d.evadmin) { toggleEventAdmin(d.evadmin, t.checked); }
+  else if (t.id === 'addadmin') { if (t.value) toggleEventAdmin(t.value, true); }
+  else if (t.id === 'showdemo') { ui.showDemo = t.checked; render(); }
+  else if (t.id === 'showarch') { ui.showArchived = t.checked; render(); }
   else if (d.pick) { ui.picks = ui.picks || {}; ui.picks[d.pick] = t.checked; render(); }
-  else if (d.pf) { const p = tour.players.find(x => x.id === d.pid); if (d.pf === 'hcp') { const n = parseInt(t.value, 10); if (!isNaN(n)) { p.hcp = n; if (p.dir) savePerson(p, { hcp: n }); } } else if (d.pf === 'team') p.team = t.value || null; else { p.name = t.value.trim() || p.name; if (p.dir) savePerson(p, { name: p.name }); } render(); }
+  else if (d.pf) { const p = tour.players.find(x => x.id === d.pid); if (d.pf === 'hcp') { const n = parseInt(t.value, 10); if (!isNaN(n)) p.hcp = n; } else if (d.pf === 'team') p.team = t.value || null; else p.name = t.value.trim() || p.name; render(); }
   else if (d.df) { const day = dayById(d.did);
     if (d.df === 'course') { const [c, te] = t.value.split('|'); day.courseId = c || null; day.teeId = te || null; }
     else if (d.df === 'teamsOn') day.teamsOn = t.checked;
@@ -1008,10 +1238,28 @@ document.addEventListener('change', e => {
     g.slots[side][k] = nv; render(); }
 });
 document.addEventListener('input', e => {
-  if (e.target.id !== 'bookq') return;
-  ui.bookQ = e.target.value; const q = ui.bookQ.toLowerCase();
-  document.querySelectorAll('.book .bk').forEach(l => (l.hidden = q && !l.textContent.toLowerCase().includes(q)));
+  if (e.target.id === 'bookq') { ui.bookQ = e.target.value; const q = ui.bookQ.toLowerCase();
+    document.querySelectorAll('.book:not(.adm) .bk').forEach(l => (l.hidden = q && !l.textContent.toLowerCase().includes(q))); }
+  if (e.target.id === 'dirq') { ui.dirQ = e.target.value; const q = ui.dirQ.toLowerCase();
+    document.querySelectorAll('.plist .prow').forEach(l => (l.hidden = q && !l.querySelector('.phd b').textContent.concat(' ', l.querySelector('.phd').textContent).toLowerCase().includes(q))); }
 });
+function copyText(txt, msg) { try { navigator.clipboard.writeText(txt).then(() => toast(msg), () => toast('Select the link and copy it.')); } catch (err) { toast('Select the link and copy it.'); } }
+function setPhone(pid, v) {
+  const n = normPhone(v); ui.phoneDraft = ui.phoneDraft || {};
+  if (!String(v).trim()) { delete ui.phoneDraft[pid]; savePerson(pid, { phone: '' }); }
+  else if (n) { delete ui.phoneDraft[pid]; savePerson(pid, { phone: n }); }
+  else ui.phoneDraft[pid] = v;
+  render();
+}
+function toggleEventAdmin(pid, on) {
+  if (!isAppAdmin()) return;
+  const cur = tour.eventAdmins || [];
+  tour.eventAdmins = on ? [...new Set([...cur, pid])] : cur.filter(x => x !== pid);
+  const of = people[pid]?.adminOf || [];
+  savePerson(pid, { adminOf: on ? [...new Set([...of, tourId])] : of.filter(x => x !== tourId) });
+  render(); toast(on ? `${PIDX[pid]?.name || people[pid]?.fullName} is now an event administrator.` : 'Event administrator removed.');
+}
+function route2Home() { if (myPid) showHome(); else { gate = { state: 'landing' }; render(); } }
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && ui.entry) { ui.entry = null; renderSheet(); }
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('tr.hrow, tr.tap')) { e.preventDefault(); e.target.click(); }

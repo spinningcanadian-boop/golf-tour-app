@@ -1,69 +1,101 @@
 rules_version = '2';
 
-// Golf Tour App security rules.
-// - Only signed-in people with access to a tour can read it.
-// - Administrators (listed in the tour's adminUids) can change anything in their tour.
-// - A player joins by opening their personal invite link, which creates their membership.
-// - Players can enter scores only for people in their own group on that day, and only until
-//   the match is submitted (locked), and not in a session set to View only. Administrators can always change scores.
+// Golf Tour App security rules (version 2: one app, many events).
+//
+// Roles
+// - Owner: everything. Recognised by Google sign-in (app/config.ownerUids) or by their personal link.
+// - App administrator: everything the Owner can do (except make someone else Owner).
+// - Event administrator: set up the events they are made administrator of (not status, not who the administrators are).
+// - Player: sees Active and Complete events they are in; enters scores for their own group only.
+//
+// Identity
+// - Each person in the directory has one personal link (links/{token}). Opening it on a phone links
+//   that phone's sign-in to the person (devices/{uid}). From then on, any event link works on that phone.
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
-    function tourPath(t) { return /databases/$(database)/documents/tours/$(t); }
-    function tourData(t) { return get(tourPath(t)).data; }
-    function isAdmin(t) { return signedIn() && request.auth.uid in tourData(t).adminUids; }
-    function memberPath(t) { return /databases/$(database)/documents/tours/$(t)/members/$(request.auth.uid); }
-    function isMember(t) { return signedIn() && exists(memberPath(t)); }
-    function myPlayer(t) { return get(memberPath(t)).data.playerId; }
-    // The administrator's app keeps tour.access[dayId][playerOrTeamId] = groupId up to date.
-    function inMyGroup(t, dayId, groupId) { return tourData(t).access[dayId][myPlayer(t)] == groupId; }
+    function cfg() { return get(/databases/$(database)/documents/app/config).data; }
+    function devPath() { return /databases/$(database)/documents/devices/$(request.auth.uid); }
+    function linked() { return signedIn() && exists(devPath()); }
+    function me() { return get(devPath()).data.personId; }
+    function meDoc() { return get(/databases/$(database)/documents/people/$(me())).data; }
+    function googleOwner() { return signedIn() && request.auth.uid in cfg().ownerUids; }
+    function isOwner() { return googleOwner() || (linked() && meDoc().role == 'owner'); }
+    function isAppAdmin() { return isOwner() || (linked() && meDoc().role == 'appAdmin'); }
+    // Staff = app administrators plus anyone who is an event administrator somewhere.
+    function isStaff() { return isAppAdmin() || (linked() && meDoc().get('adminOf', []).size() > 0); }
 
-    // Each administrator's private address book (names, mobiles, usual handicap). Only they can see it.
-    match /directory/{uid}/people/{pid} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
+    match /app/config {
+      allow get: if signedIn();
+      // The first person to sign in with Google becomes the Owner. After that, only the Owner can change this.
+      allow create: if signedIn() && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.resource.data.ownerUids == [request.auth.uid];
+      allow update: if isOwner();
     }
 
-    match /tours/{t} {
-      // Administrators can list their own tours; members can read the tour they belong to.
-      allow list: if signedIn() && request.auth.uid in resource.data.adminUids;
-      allow get: if signedIn() && (request.auth.uid in resource.data.adminUids || isMember(t));
-      // Anyone signed in with Google can start a new tour, with themselves as its administrator.
-      allow create: if signedIn() && request.auth.token.firebase.sign_in_provider == 'google.com'
-        && request.resource.data.adminUids == [request.auth.uid];
-      allow update, delete: if isAdmin(t);
+    // The player directory: full name, nickname, mobile, usual handicap, role, personal link.
+    match /people/{p} {
+      allow get: if isStaff() || (linked() && me() == p);
+      allow list: if isStaff();
+      allow create: if isAppAdmin()
+        || (isStaff() && request.resource.data.role == 'player' && request.resource.data.get('adminOf', []).size() == 0);
+      allow update: if isOwner()
+        || (isAppAdmin() && resource.data.role != 'owner' && request.resource.data.role in ['player', 'appAdmin'])
+        || (isAppAdmin() && resource.data.role == 'owner' && request.resource.data.role == 'owner')
+        || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullName', 'nick', 'phone', 'hcp', 'token', 'sentAt']));
+      allow delete: if isAppAdmin() && resource.data.role != 'owner';
+    }
 
-      match /invites/{token} {
-        // Knowing the token is what lets a player join, so anyone signed in may read one by its token.
-        allow get: if signedIn();
-        allow list, create, update, delete: if isAdmin(t);
+    // Personal links. Knowing the token is what lets a phone sign in as that person.
+    match /links/{tok} {
+      allow get: if signedIn();
+      allow create, delete: if isStaff();
+    }
+
+    // Which person each signed-in phone belongs to.
+    match /devices/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isStaff());
+      allow list: if isStaff();
+      allow create, update: if signedIn() && request.auth.uid == uid && (
+        get(/databases/$(database)/documents/links/$(request.resource.data.token)).data.personId == request.resource.data.personId
+        || (googleOwner() && request.resource.data.token == 'owner'));
+      allow delete: if isAppAdmin() || (signedIn() && request.auth.uid == uid);
+    }
+
+    match /events/{e} {
+      function ev() { return get(/databases/$(database)/documents/events/$(e)).data; }
+      function evAdmin() { return isAppAdmin() || (linked() && me() in ev().eventAdmins); }
+      // visibleTo = everyone in the event when Active or Complete; only the event administrators otherwise.
+      function evMember() { return linked() && me() in ev().visibleTo; }
+      function visibleOk() {
+        return (request.resource.data.status in ['active', 'complete'] && request.resource.data.visibleTo == request.resource.data.members)
+          || (!(request.resource.data.status in ['active', 'complete']) && request.resource.data.visibleTo == request.resource.data.eventAdmins);
       }
 
-      match /members/{uid} {
-        allow get: if isAdmin(t) || (signedIn() && request.auth.uid == uid);
-        allow list, update, delete: if isAdmin(t);
-        // Joining: a player creates their own membership, matching a real invite.
-        allow create: if isAdmin(t) || (signedIn() && request.auth.uid == uid
-          && get(/databases/$(database)/documents/tours/$(t)/invites/$(request.resource.data.token)).data.playerId == request.resource.data.playerId);
-      }
+      allow get, list: if isAppAdmin() || (linked() && me() in resource.data.visibleTo);
+      allow create: if isAppAdmin() && visibleOk();
+      allow delete: if isAppAdmin();
+      allow update: if (isAppAdmin() && visibleOk())
+        || (linked() && me() in resource.data.eventAdmins && visibleOk()
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'eventAdmins']));
 
       match /scores/{sid} {
-        allow read: if isAdmin(t) || isMember(t);
-        allow delete: if isAdmin(t);
-        allow create, update: if isAdmin(t) || (isMember(t)
+        allow read: if evAdmin() || evMember();
+        allow delete: if evAdmin();
+        allow create, update: if evAdmin() || (evMember()
           && sid == request.resource.data.dayId + '_' + request.resource.data.ent
-          && inMyGroup(t, request.resource.data.dayId, request.resource.data.groupId)
-          && tourData(t).access[request.resource.data.dayId][request.resource.data.ent] == request.resource.data.groupId
-          && !('__viewonly' in tourData(t).access[request.resource.data.dayId])
-          && !exists(/databases/$(database)/documents/tours/$(t)/locks/$(request.resource.data.unitKey))
+          && ev().access[request.resource.data.dayId][me()] == request.resource.data.groupId
+          && ev().access[request.resource.data.dayId][request.resource.data.ent] == request.resource.data.groupId
+          && !('__viewonly' in ev().access[request.resource.data.dayId])
+          && !exists(/databases/$(database)/documents/events/$(e)/locks/$(request.resource.data.unitKey))
           && request.resource.data.holes.size() == 18);
       }
 
       match /locks/{k} {
-        allow read: if isAdmin(t) || isMember(t);
-        // Players submit (lock) a match in their own group; only administrators unlock.
-        allow create: if isAdmin(t) || (isMember(t) && inMyGroup(t, request.resource.data.dayId, request.resource.data.groupId));
-        allow update, delete: if isAdmin(t);
+        allow read: if evAdmin() || evMember();
+        allow create: if evAdmin() || (evMember() && ev().access[request.resource.data.dayId][me()] == request.resource.data.groupId);
+        allow update, delete: if evAdmin();
       }
     }
   }

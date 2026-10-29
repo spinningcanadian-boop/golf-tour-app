@@ -29,7 +29,9 @@ export const fb = {
   batchSet: async items => { for (let i = 0; i < items.length; i += 400) { const b = writeBatch(db); items.slice(i, i + 400).forEach(x => b.set(ref(x.path), x.data)); await b.commit(); } },
   watchDoc: (path, cb, err) => onSnapshot(ref(path), { includeMetadataChanges: true }, s => cb(s.exists() ? s.data() : null, { pending: s.metadata.hasPendingWrites, cached: s.metadata.fromCache }), err),
   watchColl: (path, cb, err) => onSnapshot(cref(path), { includeMetadataChanges: true }, s => cb(s.docs.map(d => ({ id: d.id, data: d.data() })), { pending: s.metadata.hasPendingWrites, cached: s.metadata.fromCache }), err),
-  adminTours: async uid => (await getDocs(query(cref('tours'), where('adminUids', 'array-contains', uid)))).docs.map(d => ({ id: d.id, data: d.data() })),
+  merge: (path, data) => setDoc(ref(path), data, { merge: true }),
+  list: async path => (await getDocs(cref(path))).docs.map(d => ({ id: d.id, data: d.data() })),
+  listContains: async (path, field, value) => (await getDocs(query(cref(path), where(field, 'array-contains', value)))).docs.map(d => ({ id: d.id, data: d.data() })),
   now: () => serverTimestamp(),
-  newId: () => doc(cref('tours')).id,
+  newId: () => doc(cref('events')).id,
 };

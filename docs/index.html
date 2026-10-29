@@ -308,6 +308,33 @@ select.warnsel { background: color-mix(in srgb, var(--as) 22%, var(--surface)); 
 .invrow .err-t { grid-column: 1 / -1; color: var(--dbl); }
 .st { display: inline-block; margin-left: 6px; font: 600 11px/1.6 var(--f-body); padding: 0 7px; border-radius: 999px; background: var(--bg); color: var(--muted); }
 .st.sent { background: var(--as-soft); color: var(--as-ink); } .st.ok { background: color-mix(in srgb, var(--ok) 18%, var(--surface)); color: var(--ok); }
+/* Phase 2: home, directory, links */
+.homebtn { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px solid color-mix(in srgb, var(--navy-ink) 35%, transparent); color: var(--navy-ink); border-radius: 999px; padding: 5px 11px 5px 8px; font: 600 13px/1 var(--f-body); cursor: pointer; }
+.homebtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.fullname { display: block; font-size: 11.5px; color: var(--muted); padding: 2px 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.newp2 { display: grid; grid-template-columns: 1.4fr 1fr 1fr 64px auto; gap: 8px; }
+@media (max-width: 560px) { .newp2 { grid-template-columns: 1fr 1fr; } .newp2 .btn { grid-column: 1 / -1; } }
+.newp2 input, .pform input[type=text] { border: 1px solid var(--rule-strong); border-radius: 6px; padding: 8px 9px; background: var(--surface); width: 100%; min-width: 0; font-size: 15px; }
+.pform input.bad { border-color: var(--dbl); }
+.stchip { display: inline-block; margin-left: 6px; font: 600 11px/1.6 var(--f-body); padding: 0 8px; border-radius: 999px; background: var(--bg); color: var(--muted); vertical-align: 1px; }
+.stchip.st-active { background: color-mix(in srgb, var(--ok) 18%, var(--surface)); color: var(--ok); }
+.stchip.st-planning { background: var(--as-soft); color: var(--as-ink); }
+.stchip.st-complete { background: color-mix(in srgb, var(--birdie) 16%, var(--surface)); color: var(--birdie); }
+.evlist { display: grid; gap: 8px; }
+.evitem { display: grid; gap: 3px; text-align: left; background: var(--surface); border: 1px solid var(--rule-strong); border-radius: 8px; padding: 11px 13px; cursor: pointer; color: var(--ink); font: inherit; }
+.evitem:hover { border-color: var(--navy); }
+.evitem .evt b { font: 700 16px/1.25 var(--f-display); }
+.evlink { display: grid; gap: 7px; }
+.evlink code { font-size: 12.5px; background: var(--bg); padding: 7px 9px; border-radius: 6px; word-break: break-all; }
+.selbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.queue { display: grid; gap: 8px; margin: 6px 14px 10px; padding: 12px; border-radius: 8px; background: var(--as-soft); color: var(--ink); }
+.queue a.btn { text-decoration: none; text-align: center; font-size: 16px; padding: 12px; }
+.invrow .sel { display: inline-flex; align-items: center; gap: 8px; } .invrow .sel input { width: 18px; height: 18px; accent-color: var(--navy); }
+.plist .prow { border-top: 1px solid var(--rule); } .plist .prow[hidden] { display: none; }
+.prow .phd { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; background: none; border: 0; text-align: left; padding: 10px 14px; cursor: pointer; color: var(--ink); font: inherit; }
+.prow .pform { padding: 2px 14px 14px; }
+.book.adm { max-height: none; }
+#dirq { border: 1px solid var(--rule-strong); border-radius: 6px; padding: 8px 9px; background: var(--surface); width: 100%; font-size: 15px; color: var(--ink); }
 .banner.prev { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 .prevbox { padding: 10px; border-radius: 8px; background: var(--bg); }
 .wait { font: 700 18px/1 var(--f-display); color: var(--muted); letter-spacing: .1em; }
@@ -321,9 +348,9 @@ select.warnsel { background: color-mix(in srgb, var(--as) 22%, var(--surface)); 
 <div id="overlay"></div>
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="app.js?v=bb908eedbf"></script>
+<script src="app.js?v=672b6cd78e"></script>
 <script>
-window.APP_VERSION = 'bb908eedbf';
+window.APP_VERSION = '672b6cd78e';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
   // When a new version takes over, reload once so the screen shows it.
