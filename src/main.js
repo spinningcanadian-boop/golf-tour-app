@@ -47,6 +47,9 @@ const scoringOf = d => d.scoring || 'stableford';           // 'stableford' | 'b
 const hasStab = d => scoringOf(d) !== 'net';
 const hasNet = d => scoringOf(d) !== 'stableford';
 const viewOnly = d => d.mode === 'view';
+const multOn = d => !!d.multiplier;
+const multPlayers = g => groupPlayers(g).filter(id => PIDX[id]);
+function multOf(day, g) { return E.teamMultiplier(teeOf(day), multPlayers(g).map(id => ({ handicap: PIDX[id].hcp, scores: scFor(day.id, id) }))); }
 const gradeCut = () => (Number.isFinite(tour?.gradeCut) ? tour.gradeCut : 16);
 const visibleDays = () => (isAdmin() ? tour.days : tour.days.filter(d => !d.hidden));
 const DAY = () => { const v = visibleDays(); return v.find(d => d.id === ui.day) || v[0] || null; };
@@ -288,7 +291,7 @@ function viewScores() {
   const uk = day.id + ':' + g.id;
   if (ui.unit[uk] === undefined || !units[ui.unit[uk]]) { const mine = units.findIndex(u => myUnits().some(x => x.key === u.key)); ui.unit[uk] = Math.max(0, mine); }
   const u = units[ui.unit[uk]]; const m = matchOf(u); const isMatch = !!m; const ct = u.kind === 'cutthroat' ? cutThroatOf(u) : null;
-  const views = [['gross', 'Gross'], ...(u.kind === 'ambroseStroke' ? [] : [['stab', u.kind === 'ambroseMatch' ? 'Points' : 'Stableford']]), ...(u.kind === 'match' ? [['match', 'Match']] : [])];
+  const views = [['gross', 'Gross'], ...(u.kind === 'ambroseStroke' ? [] : [['stab', u.kind === 'ambroseMatch' ? 'Points' : 'Stableford']]), ...(u.kind === 'match' ? [['match', 'Match']] : []), ...(multOn(day) && !u.kind.startsWith('ambrose') && multPlayers(g).length ? [['mult', 'Multiplier']] : [])];
   if (!views.find(v => v[0] === ui.view)) ui.view = 'gross';
   const chips = groups.length > 1 ? `<div class="chips" role="toolbar" aria-label="Groups">${groups.map(x => `<button aria-pressed="${x.id === g.id}" data-group="${x.id}">Group ${day.groups.indexOf(x) + 1}</button>`).join('')}</div>` : '';
   const unitSeg = units.length > 1 ? `<div class="seg" role="group" aria-label="Match">${units.map((x, i) => `<button aria-pressed="${i === ui.unit[uk]}" data-unit="${i}">${esc(x.label)}</button>`).join('')}</div>` : '';
@@ -354,6 +357,7 @@ function viewScores() {
   } else {
     const S = hasStab(day), N = hasNet(day);
     if (u.side && isMatch) summary += `<section class="card"><h2>Sign and submit</h2>${submitHTML(units[0])}</section>`;
+    if (multOn(day) && multPlayers(g).length) { const mt = multOf(day, g); summary += `<section class="card"><h2>Team Multiplier</h2><div class="pad" style="padding-top:0;display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span class="small muted">Group ${gn} · ${mt.complete ? 'finished' : `thru ${mt.thru}`}</span><b style="font:700 22px/1 var(--f-display)">${mt.total}</b></div></section>`; }
     summary += `<section class="card"><h2>Group ${gn} scores</h2><table class="lb"><thead><tr><th>Player</th><th class="thru">Thru</th>${S ? '<th class="num">Pts</th><th class="num">Gross Stab</th>' : ''}${N ? '<th class="num">Stroke</th>' : ''}</tr></thead><tbody>${groupPlayers(g).map(id => {
       const c = cardOf(id); const t = c.holesEntered; const pu = sc(id).some(v => v === 'P');
       const played = c.holes.filter(l => typeof l.score === 'number');
@@ -367,8 +371,8 @@ function viewScores() {
   ${chips}
   <section class="card">
     <div class="ghead"><div class="t"><div><div class="eyebrow">Group ${gn} · ${esc(teeTxt(g.tee))}</div><h2>${esc(groupLabel(g))}</h2></div>${locks[u.key] ? '<span class="small" style="color:var(--ok);font-weight:600">Submitted</span>' : ''}</div>${unitSeg}${viewSeg}</div>
-    <table class="sc">${colgroup}<thead><tr><th style="text-align:left;padding-left:8px">Hole</th>${left.map(head).join('')}${isMatch ? '<th>Match</th>' : ''}${right.map(head).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>
-    <div class="legend"><span><span class="mk eagle">3</span>Eagle or better</span><span><span class="mk birdie">3</span>Birdie</span><span><span class="mk bogey">5</span>Bogey</span><span><span class="mk dbl">6</span>Double bogey +</span>${isMatch ? `<span><span class="sw" style="background:var(--${u.teams[0]}-soft)"></span><span class="sw" style="background:var(--${u.teams[1]}-soft)"></span>Winning score on the hole</span>` : ''}${ct ? '<span><span class="sw" style="background:var(--as-soft)"></span>Won the hole outright</span>' : ''}<span>${ro ? (locks[u.key] ? 'Scores locked' : 'View only') : 'Tap a hole to enter scores'}</span></div>
+    ${ui.view === 'mult' ? multTable(day, g, !canEdit(u)) : `<table class="sc">${colgroup}<thead><tr><th style="text-align:left;padding-left:8px">Hole</th>${left.map(head).join('')}${isMatch ? '<th>Match</th>' : ''}${right.map(head).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`}
+    <div class="legend"><span><span class="mk eagle">3</span>Eagle or better</span><span><span class="mk birdie">3</span>Birdie</span><span><span class="mk bogey">5</span>Bogey</span><span><span class="mk dbl">6</span>Double bogey +</span>${isMatch ? `<span><span class="sw" style="background:var(--${u.teams[0]}-soft)"></span><span class="sw" style="background:var(--${u.teams[1]}-soft)"></span>Winning score on the hole</span>` : ''}${ct ? '<span><span class="sw" style="background:var(--as-soft)"></span>Won the hole outright</span>' : ''}${ui.view === 'mult' ? '<span>× = Stableford points multiplied together; any 0 wipes the hole</span>' : ''}<span>${ro ? (locks[u.key] ? 'Scores locked' : 'View only') : 'Tap a hole to enter scores'}</span></div>
   </section>${summary}`;
 }
 /* Side match: a group playing individual scoring can set up its own match. Group members and administrators can change it. */
@@ -399,6 +403,21 @@ function sideMatchCard(day, g, baseUnit) {
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-smsave ${ready ? '' : 'disabled'}>Save side match</button><button class="btn" data-smcancel>Cancel</button></div>
     ${!ready ? `<span class="small muted">${ed.type === 'fourball' ? 'Put two players on each side.' : 'Put the same number of players on each side.'}</span>` : ''}</div></section>`;
 }
+/* Multiplier view: every player in the group, their Stableford points, and the hole product on the far right. */
+function multTable(day, g, ro) {
+  const ps = multPlayers(g); const mt = multOf(day, g);
+  const cards = Object.fromEntries(ps.map(id => [id, cardOf(id, day)]));
+  const cell = (id, i) => { const l = cards[id].holes[i]; const p = l.points; return `<td class="c">${withShots(p === null ? '<span class="empty-cell">·</span>' : `<span class="pts ${p === 0 ? 'zero' : ''}">${p}</span>`, l.strokes)}</td>`; };
+  const prod = i => { const v = mt.holes[i]; return `<td class="c mult ${v === 0 ? 'wipe' : ''}">${v === null ? '' : v === 0 ? '<span class="wipe-t">0</span>' : `<b>${v}</b>`}</td>`; };
+  const parSum = (a, b) => course.holes.slice(a, b).reduce((t, h) => t + h.par, 0);
+  const tot = (a, b) => `<tr class="tot"><td class="h">${a ? (b === 18 && a === 0 ? 'TOT' : 'IN') : 'OUT'} <span>${parSum(a, b)}</span></td>${ps.map(id => `<td>${cards[id].holes.slice(a, b).reduce((t, l) => t + (l.points ?? 0), 0)}</td>`).join('')}<td class="mult"><b>${mt.holes.slice(a, b).reduce((t, v) => t + (v ?? 0), 0)}</b></td></tr>`;
+  const rows = [];
+  for (let i = 0; i < 18; i++) { const h = course.holes[i];
+    rows.push(`<tr class="hrow ${ro ? 'ro' : ''}" data-hole="${i}" tabindex="0" aria-label="Hole ${h.number}"><td class="h"><b>${h.number}</b><span>P${h.par} · ${h.strokeIndexes[0]}</span></td>${ps.map(id => cell(id, i)).join('')}${prod(i)}</tr>`);
+    if (i === 8) rows.push(tot(0, 9)); }
+  rows.push(tot(9, 18)); rows.push(tot(0, 18).replace('>OUT <', '>TOT <'));
+  return `<table class="sc multsc"><colgroup><col class="hole">${ps.map(() => '<col>').join('')}<col class="mcol"></colgroup><thead><tr><th style="text-align:left;padding-left:8px">Hole</th>${ps.map(id => `<th><span class="nm">${esc(PIDX[id].name)}</span><span class="hc">HC ${PIDX[id].hcp}</span><span class="bar ${isTour() ? PIDX[id].team || '' : ''}"></span></th>`).join('')}<th class="mult">×</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
 function submitHTML(u) {
   if (locks[u.key]) return `<div class="submit"><span class="ok">Scores submitted and locked.</span><span class="small muted">If something is wrong, ask an administrator to change it.</span>${isAdmin() ? `<div><button class="btn" data-unlock="${u.key}">Unlock for changes</button></div>` : ''}</div>`;
   if (!isAdmin() && viewOnly(u.day)) return `<div class="submit"><span class="small muted">This session is view only: scores can no longer be changed. Ask an administrator if something is wrong.</span></div>`;
@@ -420,7 +439,7 @@ function viewLeaders() {
   const tabs = scope === 'tour'
     ? [...(anyStab ? [['stab', 'Stableford'], ['gross', 'Gross Stab']] : []), ['nov', 'Novelty']]
     : [...(hasStab(day) && indiv(day) ? [['stab', 'Stableford'], ['gross', 'Gross Stab']] : []), ...(hasNet(day) && indiv(day) ? [['net', 'Stroke']] : []),
-       ...(day.groups.some(g => g.format.startsWith('ambrose')) ? [['amb', 'Ambrose']] : []), ...(indiv(day) ? [['nov', 'Novelty']] : [])];
+       ...(day.groups.some(g => g.format.startsWith('ambrose')) ? [['amb', 'Ambrose']] : []), ...(multOn(day) && indiv(day) ? [['mult', 'Multiplier']] : []), ...(indiv(day) ? [['nov', 'Novelty']] : [])];
   if (!tabs.length) return daySwitch() + `<section class="card"><div class="pad">No leaderboards for this session yet.</div></section>`;
   if (!tabs.find(t => t[0] === ui.lb)) ui.lb = tabs[0][0];
   if (!tabs.find(t => t[0] === ui.lb)) ui.lb = 'stab';
@@ -439,7 +458,14 @@ function viewLeaders() {
     return `<tr class="tap" data-open="lb:${id}" tabindex="0" aria-expanded="${!!open}">${rowHtml}<td class="pm">${open ? '−' : '+'}</td></tr>${open ? `<tr class="detail"><td colspan="${cols + 1}">${detail()}</td></tr>` : ''}`;
   };
   let head = '', body = '', note = '';
-  if (ui.lb === 'nov') {
+  if (ui.lb === 'mult' && scope !== 'tour') {
+    const gs = day.groups.filter(g => !g.format.startsWith('ambrose') && multPlayers(g).length).map(g => ({ g, n: day.groups.indexOf(g) + 1, mt: multOf(day, g) }));
+    gs.sort((a, b) => b.mt.total - a.mt.total);
+    const rank = x => 1 + gs.filter(y => y.mt.total > x.mt.total).length; const tied = x => gs.filter(y => y.mt.total === x.mt.total).length > 1;
+    head = '<th>Pos</th><th>Group</th><th class="thru">Thru</th><th class="num">Total</th>';
+    body = gs.map(x => `<tr><td class="pos">${x.mt.thru ? (tied(x) ? 'T' : '') + rank(x) : ''}</td><td><b>Group ${x.n}</b><span class="note">${multPlayers(x.g).map(id => esc(PIDX[id].name)).join(', ')}</span></td><td class="thru ${x.mt.complete ? 'f' : ''}">${x.mt.complete ? 'F' : x.mt.thru}</td><td class="num">${x.mt.total}</td></tr>`).join('');
+    note = 'Team Multiplier Stableford: each hole scores everyone\'s Stableford points multiplied together; any 0 or pickup wipes the hole. Groups of different sizes are compared as they stand.';
+  } else if (ui.lb === 'nov') {
     ({ body, note } = noveltyView(scope === 'tour' ? visibleDays().filter(d => teeOf(d)) : [day]));
     head = null;
   } else if (scope === 'tour') {
@@ -488,19 +514,23 @@ function viewLeaders() {
 function noveltyView(days) {
   const rounds = days.flatMap(d => { const crs = teeOf(d); if (!crs) return [];
     return d.groups.filter(g => !g.format.startsWith('ambrose')).flatMap(groupPlayers).filter(id => PIDX[id] && (ui.grade === 'A' ? PIDX[id].hcp <= gradeCut() : ui.grade === 'B' ? PIDX[id].hcp > gradeCut() : true)).map(id => ({ player: id, session: d.id, pars: crs.holes.map(h => h.par), scores: scFor(d.id, id) })); });
-  const st = E.noveltyStats(rounds, 3);
+  const st = E.noveltyStats(rounds, 5);
   const multi = days.length > 1;
   const sessName = id => esc(dayById(id)?.title || '');
   const nm = id => `<span class="dot ${PIDX[id]?.team || ''}"></span>${esc(PIDX[id]?.name || '?')}`;
   const block = (title, desc, rows, val, extra) => `<div class="nov"><div class="nov-h"><b>${title}</b><span class="small muted">${desc}</span></div>
-    ${rows.length ? `<table class="lb"><tbody>${rows.map(r => `<tr><td class="pos">${r.tied ? 'T' : ''}${r.rank}</td><td>${nm(r.item.player)}${extra ? `<span class="note">${extra(r.item)}</span>` : ''}</td><td class="num">${val(r.item)}</td></tr>`).join('')}</tbody></table>` : '<div class="pad small muted">Nothing yet.</div>'}</div>`;
+    ${rows.length ? `<table class="lb"><tbody>${capTies(rows).shown.map(r => `<tr><td class="pos">${r.tied ? 'T' : ''}${r.rank}</td><td>${nm(r.item.player)}${extra ? `<span class="note">${extra(r.item)}</span>` : ''}</td><td class="num">${val(r.item)}</td></tr>`).join('')}${capTies(rows).more ? `<tr><td></td><td colspan="2" class="small muted">and ${capTies(rows).more} more level on ${val(capTies(rows).last.item)}</td></tr>` : ''}</tbody></table>` : '<div class="pad small muted">Nothing yet.</div>'}</div>`;
+  // Everyone level with 5th is included; if that makes a long list, show the first ones and count the rest.
+  function capTies(rows) { if (rows.length <= 8) return { shown: rows, more: 0 }; const last = rows[rows.length - 1]; const keep = rows.filter(r => r.rank < last.rank); const level = rows.filter(r => r.rank === last.rank);
+    const shown = [...keep, ...level.slice(0, Math.max(1, 6 - keep.length))]; return { shown, more: rows.length - shown.length, last }; }
   const range = x => `Holes ${x.from}–${x.to}${multi ? ` · ${sessName(x.session)}` : ''}`;
+  const parRange = x => `${range(x)} · <b>${x.toPar === 0 ? 'E' : toParTxt(x.toPar)}</b>`;
   const gradeSeg = `<div class="pad" style="padding-block:4px 0"><div class="seg" role="group" aria-label="Grade">${[['all', 'All'], ['A', `A grade (≤${gradeCut()})`], ['B', `B grade (${gradeCut() + 1}+)`]].map(([k, l]) => `<button aria-pressed="${(ui.grade || 'all') === k}" data-grade="${k}">${l}</button>`).join('')}</div></div>`;
   return {
-    note: (multi ? 'Top 3 across the whole event so far. Trains are counted within a single round.' : 'Top 3 in this session so far.') + (ui.grade && ui.grade !== 'all' ? ` ${ui.grade} grade only, by event handicap.` : ''),
+    note: (multi ? 'Top 5 across the whole event so far. Trains are 2 or more holes within one round; a player can appear more than once.' : 'Top 5 in this session so far. Trains are 2 or more holes in a row; a player can appear more than once.') + (ui.grade && ui.grade !== 'all' ? ` ${ui.grade} grade only, by event handicap.` : ''),
     body: gradeSeg + `<div class="novs">
-      ${block('Bogey train', 'Longest run of bogey or worse (pickups count)', st.bogeyTrain, x => x.length, range)}
-      ${block('Par train', 'Longest run of par or better', st.parTrain, x => x.length, range)}
+      ${block('Bogey train', 'Most holes in a row at bogey or worse (pickups count)', st.bogeyTrain, x => x.length, range)}
+      ${block('Par or better train', 'Most holes in a row at par or better, with the score to par', st.parTrain, x => x.length, parRange)}
       ${block('Birdies', 'Birdie or better', st.birdies, x => x.count)}
       ${block('Pars', 'Total pars', st.pars, x => x.count)}</div>`,
   };
@@ -683,7 +713,8 @@ function setupCourses() {
   const list = tour.courses.map(c => c.tees.map(t => {
     const open = ui.open['crs:' + c.id + t.id];
     return `<div class="xrow"><button data-open="crs:${c.id}${t.id}" aria-expanded="${!!open}"><span class="pm">${open ? '−' : '+'}</span><span><b>${esc(c.name)}</b> <span class="tee" style="--tee:${t.colour}"><i style="background:${t.colour}"></i>${esc(t.name)} · Par ${t.holes.reduce((a, h) => a + h.par, 0)}</span></span></button>
-      ${open ? `<div class="det" style="overflow-x:auto"><table class="mini holes"><tr class="hd"><th>Hole</th><th>Par</th><th>Index</th><th>19-36</th><th>37-54</th><th>Match</th></tr>${t.holes.map(h => `<tr><td>${h.number}</td><td>${h.par}</td><td>${h.strokeIndexes[0]}</td><td>${h.strokeIndexes[1] ?? ''}</td><td>${h.strokeIndexes[2] ?? ''}</td><td>${h.matchIndexes[0]}</td></tr>`).join('')}</table></div>` : ''}</div>`;
+      ${open ? (ui.crsEdit === c.id + '|' + t.id ? courseEditor(c, t) : `<div class="det" style="overflow-x:auto"><table class="mini holes"><tr class="hd"><th>Hole</th><th>Par</th><th>Index</th><th>19-36</th><th>37-54</th><th>Match</th></tr>${t.holes.map(h => `<tr><td>${h.number}</td><td>${h.par}</td><td>${h.strokeIndexes[0]}</td><td>${h.strokeIndexes[1] ?? ''}</td><td>${h.strokeIndexes[2] ?? ''}</td><td>${h.matchIndexes[0]}</td></tr>`).join('')}</table>
+        <div style="padding-top:8px"><button class="btn sm" data-crsedit="${c.id}|${t.id}">Edit course and indexes</button></div></div>`) : ''}</div>`;
   }).join('')).join('');
   const err = ui.courseErr ? `<div class="banner" style="margin:0">${esc(ui.courseErr)}</div>` : '';
   return `<div class="pad small muted" style="padding-bottom:6px">Your course library. Each session picks a course and tee from here.</div>${list}
@@ -694,6 +725,36 @@ function setupCourses() {
         <span class="small muted">One row per hole, in order: Par, Index (1-18), then optionally Index 19-36, Index 37-54 and the Match play index. Copy the cells in Excel and paste here.</span>
         <textarea id="cpaste" rows="6" placeholder="4\t1\t19\t37\t18&#10;4\t3\t22\t40\t8&#10;…"></textarea></div>
       ${err}<div><button class="btn primary" id="addc">Check and add</button></div></div>`;
+}
+const TEE_COLOURS = [['Blue', '#2a5fb0'], ['White', '#f4f4f4'], ['Black', '#26292e'], ['Red', '#c8372d'], ['Gold', '#f2b705'], ['Green', '#00843d']];
+function courseEditor(c, t) {
+  const used = tour.days.filter(d => d.courseId === c.id && d.teeId === t.id);
+  const inp = (k, i, v) => `<td><input type="text" inputmode="numeric" data-ce="${k}" data-i="${i}" value="${v ?? ''}" aria-label="${k} hole ${i + 1}"></td>`;
+  return `<div class="det crsedit"><div class="form" style="padding:0">
+    <div class="two"><div class="frow"><label for="ce-name">Course name</label><input type="text" id="ce-name" value="${esc(c.name)}"></div>
+      <div class="frow"><label for="ce-tee">Tee</label><div style="display:flex;gap:8px"><input type="text" id="ce-tee" value="${esc(t.name)}"><select id="ce-col" aria-label="Tee colour">${TEE_COLOURS.map(([n, col]) => `<option value="${col}" ${t.colour === col ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div></div>
+    <div style="overflow-x:auto"><table class="mini holes edit"><tr class="hd"><th>Hole</th><th>Par</th><th>Index</th><th>19-36</th><th>37-54</th><th>Match</th></tr>
+      ${t.holes.map((h, i) => `<tr><td>${h.number}</td>${inp('par', i, h.par)}${inp('i1', i, h.strokeIndexes[0])}${inp('i2', i, h.strokeIndexes[1])}${inp('i3', i, h.strokeIndexes[2])}${inp('mi', i, h.matchIndexes[0])}</tr>`).join('')}</table></div>
+    <span class="small muted">The course name changes for every tee of ${esc(c.name)}. Leave the 19-36 or 37-54 column empty if the card does not print it. ${used.length ? `Used by ${used.map(d => esc(d.title)).join(', ')}: scores and results there recalculate with the new indexes.` : ''}</span>
+    <div class="crs-err"></div>
+    <div style="display:flex;gap:8px"><button class="btn primary" data-crssave="${c.id}|${t.id}">Save changes</button><button class="btn" data-crscancel>Cancel</button></div></div></div>`;
+}
+/** 18 rows of [par, index, index 19-36, index 37-54, match index] (blank = undefined) -> holes, with checks. */
+function holesFromRows(rows) {
+  rows.forEach((r, i) => { if (!(r[0] >= 3 && r[0] <= 6)) throw new Error(`Hole ${i + 1}: par ${r[0] ?? '(blank)'} looks wrong.`); });
+  const blank = x => x === undefined || x === null || Number.isNaN(x);
+  const perm = (col, lo, label) => {
+    const v = rows.map(r => r[col]);
+    if (v.every(blank)) return null;
+    if (v.some(blank)) throw new Error(`The ${label} column has gaps: fill in all 18 holes or leave it all empty.`);
+    const sorted = [...v].sort((a, b) => a - b);
+    if (!sorted.every((x, i) => x === lo + i)) throw new Error(`The ${label} column must use each number ${lo} to ${lo + 17} once.`);
+    return v;
+  };
+  const i1 = perm(1, 1, 'index'); if (!i1) throw new Error('The index column is needed.');
+  const i2 = perm(2, 19, '19-36'), i3 = perm(3, 37, '37-54'), mi = perm(4, 1, 'match play');
+  if (i3 && !i2) throw new Error('Fill in the 19-36 column before the 37-54 column.');
+  return rows.map((r, i) => ({ number: i + 1, par: r[0], strokeIndexes: [r[1], ...(i2 ? [r[2]] : []), ...(i3 ? [r[3]] : [])], matchIndexes: [mi ? r[4] : r[1]] }));
 }
 function parseHoles(text) {
   const rows = text.trim().split(/\r?\n/).map(r => r.trim()).filter(Boolean).map(r => r.split(/[\t,; ]+/).map(Number));
@@ -719,6 +780,7 @@ function setupDays() {
       <div class="frow"><span class="lab">Players can</span><div class="seg" role="group" aria-label="Scoring access">${[['edit', 'View and edit'], ['view', 'View only']].map(([k, l]) => `<button aria-pressed="${(d.mode || 'edit') === k}" data-mode="${k}" data-did="${d.id}">${l}</button>`).join('')}</div>
         <span class="small muted">${viewOnly(d) ? 'Results are final: players can see but not change scores. Administrators can still edit.' : 'Players enter scores for their own match.'}</span></div>
       <div class="frow"><span class="lab">Individual scoring</span><div class="seg" role="group" aria-label="Individual scoring">${[['stableford', 'Stableford'], ['both', 'Stableford + Stroke'], ['net', 'Stroke only']].map(([k, l]) => `<button aria-pressed="${scoringOf(d) === k}" data-scoring="${k}" data-did="${d.id}">${l}</button>`).join('')}</div></div>
+      <label class="switch tourmode"><input type="checkbox" data-df="multiplier" data-did="${d.id}" ${multOn(d) ? 'checked' : ''}> <span>Team Multiplier Stableford<span class="small muted" style="display:block;font-weight:500">Novelty: on each hole everyone's Stableford points in the group are multiplied together; any 0 or pickup wipes the hole. Adds a Multiplier view to the scorecard and a Multiplier leaderboard.</span></span></label>
       ${!isTour() ? '' : `<label class="switch tourmode"><input type="checkbox" data-df="teamsOn" data-did="${d.id}" ${d.teamsOn !== false ? 'checked' : ''}> <span>Tour mode: <b style="color:var(--t1-text)">${esc(tName('t1'))}</b> v <b style="color:var(--t2-text)">${esc(tName('t2'))}</b><span class="small muted" style="display:block;font-weight:500">Matches are ${esc(tName('t1'))} v ${esc(tName('t2'))} and count towards the Cup. Turn off for a session of mixed groups.</span></span></label>`}
       <div class="frow"><label>Briefing</label><textarea rows="3" data-df="briefing" data-did="${d.id}" placeholder="Meeting time, format, nearest the pins…">${esc(d.briefing || '')}</textarea></div>
       <div class="frow"><span class="lab">Groups</span>${check}</div>
@@ -1249,6 +1311,19 @@ document.addEventListener('click', e => {
       toast(`${cn} · ${tn} added: par ${holes.reduce((a, h) => a + h.par, 0)}.`);
     } catch (err) { ui.courseErr = err.message; render(); document.getElementById('cpaste').value = txt; document.getElementById('cn').value = cn; document.getElementById('ctn').value = tn; }
   }
+  else if (d.crsedit) { ui.crsEdit = d.crsedit; ui.crsErr = null; render(); }
+  else if ('crscancel' in d) { ui.crsEdit = null; ui.crsErr = null; render(); }
+  else if (d.crssave) { const [cid, tid] = d.crssave.split('|'); const c = tour.courses.find(x => x.id === cid); const te = c.tees.find(x => x.id === tid);
+    const val = (k, i) => { const el = document.querySelector(`[data-ce="${k}"][data-i="${i}"]`); const v = el ? el.value.trim() : ''; return v === '' ? undefined : Number(v); };
+    try {
+      const name = document.getElementById('ce-name').value.trim(), tee = document.getElementById('ce-tee').value.trim();
+      if (!name || !tee) throw new Error('Enter the course name and the tee.');
+      if (c.tees.some(x => x.id !== tid && x.name.toLowerCase() === tee.toLowerCase())) throw new Error(`${name} already has a ${tee} tee.`);
+      const holes = holesFromRows(Array.from({ length: 18 }, (_, i) => ['par', 'i1', 'i2', 'i3', 'mi'].map(k => val(k, i))));
+      c.name = name; te.name = tee; te.colour = document.getElementById('ce-col').value; te.holes = holes;
+      ui.crsEdit = null; ui.crsErr = null; render(); toast(`${name} · ${tee} saved: par ${holes.reduce((a, h) => a + h.par, 0)}.`);
+    } catch (err) { const box = document.querySelector('.crs-err'); if (box) box.innerHTML = `<div class="banner" style="margin:0">${esc(err.message)}</div>`; }
+  }
   else if (t.id === 'addday') { const last = tour.days[tour.days.length - 1]; const nd = new Date(last.date + 'T00:00'); nd.setDate(nd.getDate() + 1);
     const day = { id: uid('d'), title: 'Session ' + (tour.days.length + 1), scoring: last.scoring || 'stableford', mode: 'edit', date: nd.toISOString().slice(0, 10), courseId: last.courseId, teeId: last.teeId, teamsOn: true, hidden: true, briefing: '', groups: [] };
     tour.days.push(day); ui.open['day:' + day.id] = true; render(); toast(`${day.title} added. It stays hidden from players until you show it.`); }
@@ -1325,6 +1400,7 @@ document.addEventListener('change', e => {
   else if (d.df) { const day = dayById(d.did);
     if (d.df === 'course') { const [c, te] = t.value.split('|'); day.courseId = c || null; day.teeId = te || null; }
     else if (d.df === 'teamsOn') day.teamsOn = t.checked;
+    else if (d.df === 'multiplier') day.multiplier = t.checked;
     else if (d.df === 'shown') day.hidden = !t.checked; else day[d.df] = t.value; render(); }
   else if (d.gf) { const g = findGroup(d.did, d.gid);
     if (d.gf === 'value') g.value = parseFloat(t.value);

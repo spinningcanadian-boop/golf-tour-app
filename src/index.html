@@ -349,6 +349,13 @@ select.warnsel { background: color-mix(in srgb, var(--as) 22%, var(--surface)); 
 .sidelbl2 { font-size: 11.5px; font-weight: 600; color: var(--muted); margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; }
 .ctline { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; font-size: 14px; padding: 4px 0; }
 .ctline .lead b { color: var(--ok); }
+.sc th.mult, .sc td.mult { background: color-mix(in srgb, var(--navy) 7%, var(--surface)); text-align: center; font-variant-numeric: tabular-nums; }
+.sc td.mult b { font: 700 15px/1 var(--f-display); }
+.sc td.mult.wipe { background: color-mix(in srgb, var(--dbl) 12%, var(--surface)); } .wipe-t { color: var(--dbl); font-weight: 700; }
+.sc col.mcol { width: 58px; }
+.sc thead th.mult { background: var(--navy); color: var(--navy-ink); font-size: 18px; }
+table.holes.edit input { width: 44px; border: 1px solid var(--rule-strong); border-radius: 4px; padding: 4px; text-align: center; font-size: 14px; background: var(--surface); color: var(--ink); }
+.crsedit .form input[type=text]:not([data-ce]) { border: 1px solid var(--rule-strong); border-radius: 6px; padding: 8px 9px; width: 100%; font-size: 15px; background: var(--surface); color: var(--ink); }
 #dirq { border: 1px solid var(--rule-strong); border-radius: 6px; padding: 8px 9px; background: var(--surface); width: 100%; font-size: 15px; color: var(--ink); }
 .banner.prev { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 .prevbox { padding: 10px; border-radius: 8px; background: var(--bg); }

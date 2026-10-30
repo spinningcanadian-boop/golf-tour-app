@@ -64,6 +64,12 @@ Pure calculation code (TypeScript, no UI, no database). Run the tests with Node 
 - **Grades** for Novelty stats: A grade = event handicap up to the event's threshold (default 16); B grade = above it.
 - Groups can be moved up or down; tee times stay with the slot in the order of play. Tee times use the phone's time picker and show as 12-hour (7:30 AM).
 
+### Team Multiplier, trains and courses (30 Oct)
+- **Team Multiplier Stableford** (a session option): on each hole, everyone in the group's Stableford points (full handicap) are multiplied together; any 0 or pickup makes the hole 0. Group total = sum of the hole products. A hole counts once everyone has scored. Shown as a Multiplier panel on the scorecard and a Multiplier leaderboard (groups ranked by total; ties shared). (`multiplier.ts`)
+- **Novelty top 5** for trains, birdies and pars (everyone level with 5th included; a long tie is summarised as "and N more level").
+- **Trains** are 2 or more holes in a row within a round. Every train counts, so a player can appear twice. The **Par or better train** shows the score to par over the train (E, −1, −2…); same length lists the better score first.
+- Course name, tee, colour, pars and all index columns can be edited in Setup › Courses (same checks as pasting).
+
 ## Open questions
 - None at present.
 
