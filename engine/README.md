@@ -65,10 +65,14 @@ Pure calculation code (TypeScript, no UI, no database). Run the tests with Node 
 - Groups can be moved up or down; tee times stay with the slot in the order of play. Tee times use the phone's time picker and show as 12-hour (7:30 AM).
 
 ### Team Multiplier, trains and courses (30 Oct)
-- **Team Multiplier Stableford** (a session option): on each hole, everyone in the group's Stableford points (full handicap) are multiplied together; any 0 or pickup makes the hole 0. Group total = sum of the hole products. A hole counts once everyone has scored. Shown as a Multiplier panel on the scorecard and a Multiplier leaderboard (groups ranked by total; ties shared). (`multiplier.ts`)
+- **Team Multiplier Stableford** (a session option): on each hole, everyone in the group's Stableford points (full handicap) are multiplied together; any 0 or pickup makes the hole 0. Groups of 2 or 3 are made up to 4 with dummy players on 2 points a hole. Group total = sum of the hole products. A hole counts once everyone has scored. Shown as a final × column on the Stableford scorecard and a Multiplier leaderboard (groups ranked by total, ties shared; tap a group for hole by hole). (`multiplier.ts`)
 - **Novelty top 5** for trains, birdies and pars (everyone level with 5th included; a long tie is summarised as "and N more level").
 - **Trains** are 2 or more holes in a row within a round. Every train counts, so a player can appear twice. The **Par or better train** shows the score to par over the train (E, −1, −2…); same length lists the better score first.
 - Course name, tee, colour, pars and all index columns can be edited in Setup › Courses (same checks as pasting).
+
+### Handicaps (30 Oct)
+- Handicaps are set per event (Setup › Players), and can be pasted from Excel: two columns, full name and playing handicap. Names match on full name or nickname; a name within 2 characters is flagged "Check" and only applied once confirmed; unknown names can be mapped by hand or skipped. Decimals are rounded.
+- By exception, a session can have its own handicaps (small "Session handicaps…" link at the bottom of the session's settings). Everyone not listed plays off their event handicap. All calculations for that session use them.
 
 ## Open questions
 - None at present.

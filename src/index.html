@@ -86,6 +86,8 @@ main { max-width: 760px; margin: 0 auto; padding-block: 14px 120px;
 .seg { display: inline-grid; grid-auto-flow: column; border: 1px solid var(--rule-strong); border-radius: 7px; overflow: hidden; max-width: 100%; }
 .seg button { background: var(--surface); border: 0; border-left: 1px solid var(--rule-strong); padding: 8px 11px; font: 600 12.5px/1.1 var(--f-body); cursor: pointer; }
 .seg button:first-child { border-left: 0; }
+.seg.many { display: grid; grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); width: 100%; }
+.seg.many button { border-top: 1px solid var(--rule-strong); } .seg.many button:nth-child(-n+3) { border-top: 0; } .seg.many button:nth-child(3n+1) { border-left: 0; }
 .seg button[aria-pressed="true"] { background: var(--navy); color: var(--navy-ink); }
 .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .switch input { width: 18px; height: 18px; accent-color: var(--navy); }
@@ -353,6 +355,17 @@ select.warnsel { background: color-mix(in srgb, var(--as) 22%, var(--surface)); 
 .sc td.mult b { font: 700 15px/1 var(--f-display); }
 .sc td.mult.wipe { background: color-mix(in srgb, var(--dbl) 12%, var(--surface)); } .wipe-t { color: var(--dbl); font-weight: 700; }
 .sc col.mcol { width: 58px; }
+.hppanel { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--rule-strong); border-radius: 8px; margin: 4px 0; }
+.hppanel textarea { width: 100%; font: 14px/1.4 ui-monospace, monospace; border: 1px solid var(--rule-strong); border-radius: 6px; padding: 8px; background: var(--surface); color: var(--ink); }
+.hplist { display: grid; gap: 0; }
+.hprow { display: grid; gap: 5px; padding: 8px 0; border-top: 1px solid var(--rule); }
+.hprow.close { background: color-mix(in srgb, var(--as) 10%, transparent); padding-inline: 6px; } .hprow.none { background: color-mix(in srgb, var(--dbl) 7%, transparent); padding-inline: 6px; }
+.hpm { display: flex; gap: 8px; align-items: center; } .hpm select { flex: 1; min-width: 0; } .hcchg { white-space: nowrap; font-size: 14px; }
+.hpok { display: flex; gap: 6px; align-items: center; } .hpok input { width: 18px; height: 18px; }
+.sesshc { padding-top: 6px; } .linkbtn { background: none; border: 0; padding: 4px 0; color: var(--muted); font: 500 12.5px var(--f-body); text-decoration: underline; cursor: pointer; }
+.multmini td.nmc { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.multmini tr.prod td { font-weight: 700; background: color-mix(in srgb, var(--navy) 7%, var(--surface)); } .multmini tr.prod td.wipe, .multmini td.zero { color: var(--dbl); }
+.multmini tr.dummy td { color: var(--muted); font-style: italic; }
 .sc thead th.mult { background: var(--navy); color: var(--navy-ink); font-size: 18px; }
 table.holes.edit input { width: 44px; border: 1px solid var(--rule-strong); border-radius: 4px; padding: 4px; text-align: center; font-size: 14px; background: var(--surface); color: var(--ink); }
 .crsedit .form input[type=text]:not([data-ce]) { border: 1px solid var(--rule-strong); border-radius: 6px; padding: 8px 9px; width: 100%; font-size: 15px; background: var(--surface); color: var(--ink); }
